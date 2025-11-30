@@ -10,6 +10,8 @@
         <link rel="icon" href="assets/logo.ico" sizes="any" type="image/x-icon">
     <link rel="icon" href="assets/logo.svg" type="image/svg+xml"> 
     <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+
+    <link rel="manifest" href="/manifest.json">
 </head>
 <body>
     <div id="app">
@@ -204,5 +206,18 @@
     <div id="toast" class="toast"></div>
 
     <script src="app.js"></script>
+    <script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js')
+        .then(registration => {
+          console.log('Service Worker enregistré !', registration);
+        })
+        .catch(error => {
+          console.log('Échec de l\'enregistrement :', error);
+        });
+    });
+  }
+</script>
 </body>
 </html>
