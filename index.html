@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Byflash Drive - Gestionnaire de fichiers</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <link rel="icon" href="assets/logo.ico" sizes="any" type="image/x-icon">
+    <link rel="icon" href="assets/logo.svg" type="image/svg+xml"> 
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+</head>
+<body>
+    <div id="app">
+        <div id="login-page" class="page active">
+            <div class="login-container">
+                <div class="login-box">
+                    <h1>Byflash Drive</h1>
+                    <p class="subtitle">Connectez-vous pour accéder à vos fichiers</p>
+                    <form id="login-form">
+                        <div class="input-group">
+                            <i class="fas fa-envelope"></i>
+                            <input type="email" id="login-email" placeholder="Email" required>
+                        </div>
+                        <div class="input-group">
+                            <i class="fas fa-lock"></i>
+                            <input type="password" id="login-password" placeholder="Mot de passe" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Se connecter</button>
+                        <div id="login-error" class="error-message"></div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div id="main-page" class="page">
+            <div class="sidebar">
+                <div class="sidebar-header">
+                    <h2><i class="fas fa-cloud"></i> Byflash</h2>
+                </div>
+                <nav class="sidebar-nav">
+                    <a href="#" class="nav-item active" data-view="files">
+                        <i class="fas fa-folder"></i>
+                        <span>Mes fichiers</span>
+                    </a>
+                    <a href="#" class="nav-item" data-view="trash">
+                        <i class="fas fa-trash"></i>
+                        <span>Corbeille</span>
+                    </a>
+                </nav>
+                <div class="sidebar-footer">
+                    <div class="user-info">
+                        <i class="fas fa-user-circle"></i>
+                        <span id="user-email"></span>
+                    </div>
+                    <button id="logout-btn" class="btn btn-secondary">
+                        <i class="fas fa-sign-out-alt"></i> Déconnexion
+                    </button>
+                </div>
+            </div>
+
+            <div class="main-content">
+                <div class="toolbar">
+                    <div class="toolbar-left">
+                        <button id="upload-btn" class="btn btn-primary">
+                            <i class="fas fa-upload"></i> Upload
+                        </button>
+                        <button id="new-folder-btn" class="btn btn-secondary">
+                            <i class="fas fa-folder-plus"></i> Nouveau dossier
+                        </button>
+                    </div>
+                    <div class="toolbar-right">
+                        <div class="search-box">
+                            <i class="fas fa-search"></i>
+                            <input type="text" id="search-input" placeholder="Rechercher...">
+                        </div>
+                        <div class="view-toggle">
+                            <button class="view-btn active" data-view="grid" title="Vue grille">
+                                <i class="fas fa-th"></i>
+                            </button>
+                            <button class="view-btn" data-view="list" title="Vue liste">
+                                <i class="fas fa-list"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="breadcrumb">
+                    <span class="breadcrumb-item active">
+                        <i class="fas fa-home"></i> Accueil
+                    </span>
+                </div>
+
+                <div id="drop-zone" class="drop-zone">
+                    <i class="fas fa-cloud-upload-alt"></i>
+                    <p>Glissez-déposez vos fichiers ici</p>
+                </div>
+
+                <div id="file-container" class="file-grid">
+                </div>
+
+                <div id="trash-container" class="file-grid" style="display: none;">
+                </div>
+
+                <div class="loading-spinner" id="loading-spinner">
+                    <div class="spinner"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="upload-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Upload de fichier</h3>
+                <button class="close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <input type="file" id="file-input" multiple>
+                <div class="upload-options">
+                    <label>
+                        <input type="checkbox" id="password-check">
+                        Protéger par mot de passe
+                    </label>
+                    <input type="password" id="file-password" placeholder="Mot de passe" style="display: none;">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="cancel-upload">Annuler</button>
+                <button class="btn btn-primary" id="confirm-upload">Upload</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="folder-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Créer un dossier</h3>
+                <button class="close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <input type="text" id="folder-name" placeholder="Nom du dossier" class="input-field">
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="cancel-folder">Annuler</button>
+                <button class="btn btn-primary" id="confirm-folder">Créer</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="rename-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Renommer</h3>
+                <button class="close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <input type="text" id="rename-input" placeholder="Nouveau nom" class="input-field">
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="cancel-rename">Annuler</button>
+                <button class="btn btn-primary" id="confirm-rename">Renommer</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="metadata-modal" class="modal">
+        <div class="modal-content modal-large">
+            <div class="modal-header">
+                <h3>Informations du fichier</h3>
+                <button class="close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="metadata-content"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="close-metadata">Fermer</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="context-menu" class="context-menu">
+        <div class="context-item" data-action="download">
+            <i class="fas fa-download"></i> Télécharger
+        </div>
+        <div class="context-item" data-action="rename">
+            <i class="fas fa-edit"></i> Renommer
+        </div>
+        <div class="context-item" data-action="metadata">
+            <i class="fas fa-info-circle"></i> Informations
+        </div>
+        <div class="context-item context-item-danger" data-action="delete">
+            <i class="fas fa-trash"></i> Supprimer
+        </div>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>
