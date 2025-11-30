@@ -5,20 +5,17 @@
 }
 
 :root {
-    --background: #0f172a;    /* Bleu nuit très foncé */
-    --surface: #1e293b;       /* Un peu plus clair pour les cartes/sidebar */
-    --border: #334155;        /* Bordures gris-bleu */
-    --text-primary: #f1f5f9;  /* Blanc cassé */
-    --text-secondary: #94a3b8; /* Gris clair */
-    --hover: #334155;         /* Couleur au survol */
     --primary-color: #000;
     --secondary-color: #333;
+    --background: #fff;
+    --surface: #f5f5f5;
+    --border: #ddd;
+    --text-primary: #000;
+    --text-secondary: #666;
     --hover: #e8e8e8;
     --danger: #dc3545;
     --success: #28a745;
 }
-
-
 
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
