@@ -11,6 +11,7 @@ const App = {
     trash: [],
 
     init() {
+        this.initTheme();
         this.checkAuth();
         this.bindEvents();
     },
@@ -63,6 +64,35 @@ const App = {
         document.addEventListener('click', () => {
             document.getElementById('context-menu').classList.remove('active');
         });
+
+        document.getElementById('theme-toggle').addEventListener('click', () => this.toggleTheme());
+    },
+
+    initTheme() {
+        const savedTheme = localStorage.getItem('theme');
+        // Si un thème est sauvegardé, on l'utilise. Sinon, on regarde les préférences système
+        if (savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.body.setAttribute('data-theme', 'dark');
+            document.querySelector('#theme-toggle i').className = 'fas fa-sun';
+        } else {
+            document.body.removeAttribute('data-theme');
+            document.querySelector('#theme-toggle i').className = 'fas fa-moon';
+        }
+    },
+
+    toggleTheme() {
+        const currentTheme = document.body.getAttribute('data-theme');
+        const icon = document.querySelector('#theme-toggle i');
+
+        if (currentTheme === 'dark') {
+            document.body.removeAttribute('data-theme');
+            localStorage.setItem('theme', 'light');
+            icon.className = 'fas fa-moon'; // Devient une lune (pour passer au sombre)
+        } else {
+            document.body.setAttribute('data-theme', 'dark');
+            localStorage.setItem('theme', 'dark');
+            icon.className = 'fas fa-sun'; // Devient un soleil (pour passer au clair)
+        }
     },
 
     async handleLogin(e) {
