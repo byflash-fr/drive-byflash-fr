@@ -402,29 +402,111 @@ const App = {
         document.getElementById('close-metadata').addEventListener('click', () => document.getElementById('metadata-modal').classList.remove('active'));
     },
 
+// A REMPLACER DANS APP.JS
+
     setupContextMenu() {
         const menu = document.getElementById('context-menu');
+
         document.querySelectorAll('.context-item').forEach(item => {
             item.addEventListener('click', async (e) => {
                 e.stopPropagation();
-                menu.classList.remove('active');
-                if (!this.selectedFile) return;
                 const action = item.dataset.action;
-                if (action === 'download') await this.downloadFile(this.selectedFile.id);
-                if (action === 'delete') { await this.deleteFile(this.selectedFile.id); this.loadFiles(); }
-                if (action === 'rename') { document.getElementById('rename-input').value = this.selectedFile.name; document.getElementById('rename-modal').classList.add('active'); }
-                if (action === 'metadata') this.showMetadata(this.selectedFile);
+                menu.classList.remove('active');
+
+                // CAS 1 : Action sur un FICHIER
+                if (this.selectedFile) {
+                    switch (action) {
+                        case 'download': 
+                            await this.downloadFile(this.selectedFile.id); 
+                            break;
+                        case 'rename':
+                            document.getElementById('rename-input').value = this.selectedFile.name;
+                            document.getElementById('rename-modal').classList.add('active');
+                            break;
+                        case 'metadata': 
+                            this.showMetadata(this.selectedFile, 'file'); 
+                            break;
+                        case 'delete': 
+                            await this.deleteFile(this.selectedFile.id, 'file'); 
+                            break;
+                    }
+                }
+                // CAS 2 : Action sur un DOSSIER
+                else if (this.selectedFolderId) {
+                    if (action === 'delete') {
+                        if(confirm('Supprimer ce dossier et tout son contenu ?')) {
+                            await this.deleteFile(this.selectedFolderId, 'group');
+                        }
+                    } else if (action === 'metadata') {
+                        this.showMetadata({ id: this.selectedFolderId }, 'folder');
+                    }
+                }
             });
         });
     },
 
     showContextMenu(e, itemId, type) {
         e.preventDefault();
-        if (type === 'file') this.selectedFile = this.files.find(f => f.id === itemId);
-        const menu = document.getElementById('context-menu');
-        menu.style.left = e.pageX + 'px'; menu.style.top = e.pageY + 'px';
-        menu.classList.add('active');
+        const contextMenu = document.getElementById('context-menu');
+        
+        // --- CORRECTION CRITIQUE : ON REMET TOUT A ZÉRO ---
+        this.selectedFile = null;
+        this.selectedFolderId = null;
+
+        // Récupération des boutons du menu
+        const btnRename = document.querySelector('[data-action="rename"]');
+        const btnDownload = document.querySelector('[data-action="download"]');
+        const btnInfo = document.querySelector('[data-action="metadata"]');
+        const btnDelete = document.querySelector('[data-action="delete"]');
+
+        if (type === 'file') {
+            // C'est un fichier : On active tout
+            this.selectedFile = this.files.find(f => f.id === itemId);
+            
+            btnRename.style.display = 'block';
+            btnDownload.style.display = 'block';
+            btnInfo.style.display = 'block';
+            btnDelete.innerHTML = '<i class="fas fa-trash"></i> Supprimer';
+        } else {
+            // C'est un dossier : On cache ce qui est impossible techniquement
+            this.selectedFolderId = itemId;
+            
+            btnRename.style.display = 'none';   // Impossible de renommer un dossier virtuel
+            btnDownload.style.display = 'none'; // Impossible de télécharger un dossier (pas zippé)
+            btnInfo.style.display = 'block';    // On laisse les infos !
+            btnDelete.innerHTML = '<i class="fas fa-trash"></i> Supprimer le dossier';
+        }
+
+        // Positionnement
+        contextMenu.style.left = `${e.pageX}px`;
+        contextMenu.style.top = `${e.pageY}px`;
+        contextMenu.classList.add('active');
     },
+
+    // BONUS : Afficher les infos d'un dossier
+    showMetadata(item, type = 'file') {
+        const content = document.getElementById('metadata-content');
+        
+        if (type === 'file') {
+            content.innerHTML = `
+                <div class="metadata-row"><div class="metadata-label">Type</div><div class="metadata-value">Fichier</div></div>
+                <div class="metadata-row"><div class="metadata-label">Nom</div><div class="metadata-value">${item.name}</div></div>
+                <div class="metadata-row"><div class="metadata-label">Taille</div><div class="metadata-value">${this.formatFileSize(item.size)}</div></div>
+                <div class="metadata-row"><div class="metadata-label">ID</div><div class="metadata-value" style="font-size:10px">${item.id}</div></div>
+            `;
+        } else {
+            // Calcul du nombre de fichiers dans ce dossier
+            // On cherche dans this.files si on est à la racine, sinon il faut compter autrement
+            // Simplification : on affiche juste l'ID
+            content.innerHTML = `
+                <div class="metadata-row"><div class="metadata-label">Type</div><div class="metadata-value">Dossier Virtuel</div></div>
+                <div class="metadata-row"><div class="metadata-label">ID Groupe</div><div class="metadata-value" style="font-size:10px">${item.id}</div></div>
+                <div class="metadata-row"><div class="metadata-label">Info</div><div class="metadata-value">Contient des fichiers groupés</div></div>
+            `;
+        }
+        document.getElementById('metadata-modal').classList.add('active');
+    },
+
 
     async downloadFile(fileId) {
         this.showToast('Téléchargement...');
@@ -446,14 +528,6 @@ const App = {
         await this.apiRequest('delete', { method: 'POST', body: JSON.stringify({ id: id, type: 'file' }) }); 
     },
 
-    showMetadata(file) {
-        document.getElementById('metadata-content').innerHTML = `
-            <div class="metadata-row"><div class="metadata-label">Nom</div><div class="metadata-value">${file.name}</div></div>
-            <div class="metadata-row"><div class="metadata-label">Taille</div><div class="metadata-value">${this.formatFileSize(file.size)}</div></div>
-            <div class="metadata-row"><div class="metadata-label">ID</div><div class="metadata-value">${file.id}</div></div>
-        `;
-        document.getElementById('metadata-modal').classList.add('active');
-    },
 
     handleSearch(e) {
         const q = e.target.value.toLowerCase();
