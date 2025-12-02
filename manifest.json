@@ -1,7 +1,7 @@
 {
   "name": "Byflash Drive",
   "short_name": "Byflash",
-  "start_url": "https://drive.byflash.fr/",
+  "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#000000",
