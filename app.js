@@ -11,6 +11,10 @@ const App = {
     selectedFolderId: null,
     files: [],
     trash: [],
+    
+    // --- GESTION SÉLECTION ---
+    selectedItems: new Set(), // Stocke les IDs des fichiers sélectionnés
+    isSelectionMode: false,
 
     init() {
         this.checkAuth();
@@ -62,7 +66,12 @@ const App = {
         this.setupModals();
         this.setupContextMenu();
 
-        document.addEventListener('click', () => {
+        // Click global pour fermer les menus et gérer la désélection
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.file-item') && !e.target.closest('.selection-checkbox') && !e.target.closest('.selection-toolbar')) {
+                // Optionnel : Désélectionner si clic dans le vide (commenté pour éviter frustration)
+                // this.clearSelection(); 
+            }
             const contextMenu = document.getElementById('context-menu');
             if (contextMenu) contextMenu.classList.remove('active');
         });
@@ -145,7 +154,7 @@ const App = {
 
     async loadFiles() {
         this.showLoading();
-        this.updateBreadcrumb(); // Mise à jour du fil d'ariane
+        this.updateBreadcrumb(); 
 
         const params = this.currentFolder ? `&group_id=${this.currentFolder}` : '';
         const data = await this.apiRequest(`files${params}`);
@@ -169,7 +178,6 @@ const App = {
         const breadcrumb = document.querySelector('.breadcrumb');
         
         if (this.currentFolder) {
-            // Si dans un dossier
             breadcrumb.innerHTML = `
                 <span class="breadcrumb-item" onclick="App.goToRoot()" style="cursor:pointer; color: #3b82f6;">
                     <i class="fas fa-home"></i> Accueil
@@ -180,7 +188,6 @@ const App = {
                 </span>
             `;
         } else {
-            // Si à la racine
             breadcrumb.innerHTML = `
                 <span class="breadcrumb-item active">
                     <i class="fas fa-home"></i> Accueil
@@ -197,7 +204,6 @@ const App = {
 
     // --- GESTION MOT DE PASSE ---
     promptGroupPassword() {
-        // Injection dynamique de la modale si elle n'existe pas
         if (!document.getElementById('password-modal')) {
             const modalHTML = `
             <div id="password-modal" class="modal active">
@@ -232,24 +238,16 @@ const App = {
 
     cancelPassword() {
         document.getElementById('password-modal').classList.remove('active');
-        // Retour à la racine si on annule
         this.goToRoot();
     },
 
-    async loadTrash() {
-        this.showLoading();
-        const data = await this.apiRequest('trash_list');
-
-        if (data.success) {
-            this.trash = data.trash;
-            this.renderTrash();
-        }
-        this.hideLoading();
-    },
+    // --- RENDU ET AFFICHAGE ---
 
     renderFiles() {
         const container = document.getElementById('file-container');
         container.innerHTML = '';
+        
+        this.updateSelectionToolbar(); // Mise à jour barre d'outils sélection
 
         if (!this.files || this.files.length === 0) {
             container.innerHTML = '<div style="text-align: center; padding: 40px; color: #666;">Aucun fichier dans ce dossier</div>';
@@ -285,10 +283,9 @@ const App = {
         div.className = 'file-item';
         div.dataset.groupId = groupId;
         
-        // Vérifie si le dossier contient des fichiers protégés
         const isProtected = files.some(f => f.has_password == 1);
         const iconClass = isProtected ? 'fa-folder-closed' : 'fa-folder';
-        const colorStyle = isProtected ? 'color: #e67e22;' : ''; // Orange si protégé
+        const colorStyle = isProtected ? 'color: #e67e22;' : '';
 
         div.innerHTML = `
             <i class="fas ${iconClass} file-icon folder" style="${colorStyle}"></i>
@@ -296,9 +293,8 @@ const App = {
             <div class="file-meta">${files.length} fichier(s) ${isProtected ? '<i class="fas fa-lock" style="font-size:10px"></i>' : ''}</div>
         `;
         
-        // --- NAVIGATION AU CLIC SIMPLE ---
         div.addEventListener('click', (e) => {
-            e.stopPropagation(); // Évite la sélection
+            e.stopPropagation();
             this.currentFolder = groupId;
             this.loadFiles();
         });
@@ -309,17 +305,46 @@ const App = {
 
     createFileItem(file) {
         const div = document.createElement('div');
-        div.className = 'file-item';
+        div.className = `file-item ${this.selectedItems.has(file.id) ? 'selected' : ''}`;
         div.dataset.fileId = file.id;
+        
+        // Checkbox de sélection
+        const isSelected = this.selectedItems.has(file.id);
+        const checkboxHtml = `
+            <div class="selection-checkbox ${isSelected ? 'checked' : ''}" 
+                 onclick="event.stopPropagation(); App.toggleSelection('${file.id}')">
+                 <i class="fas fa-check"></i>
+            </div>
+        `;
+
         const icon = this.getFileIcon(file.name);
         div.innerHTML = `
+            ${checkboxHtml}
             <i class="fas ${icon} file-icon"></i>
             <div class="file-name">${file.name}</div>
             <div class="file-meta">${this.formatFileSize(file.size)}</div>
             ${file.has_password == 1 ? '<i class="fas fa-lock" style="position:absolute; top:10px; right:10px; color:#aaa;"></i>' : ''}
         `;
-        div.addEventListener('click', () => this.selectFile(file.id));
-        div.addEventListener('contextmenu', (e) => this.showContextMenu(e, file.id, 'file'));
+        
+        // Clic : Ctrl+Click pour multisélection, sinon sélection unique
+        div.addEventListener('click', (e) => {
+            if (e.ctrlKey || e.metaKey) {
+                this.toggleSelection(file.id);
+            } else {
+                this.clearSelection();
+                this.toggleSelection(file.id);
+                // Optionnel : Ouvrir la preview ici
+                this.selectFile(file.id); 
+            }
+        });
+
+        div.addEventListener('contextmenu', (e) => {
+            if (!this.selectedItems.has(file.id)) {
+                this.clearSelection();
+                this.toggleSelection(file.id);
+            }
+            this.showContextMenu(e, file.id, 'file');
+        });
         return div;
     },
 
@@ -336,183 +361,77 @@ const App = {
         return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + ['B', 'KB', 'MB', 'GB'][i];
     },
 
-    selectFile(fileId) {
-        document.querySelectorAll('.file-item').forEach(item => item.classList.remove('selected'));
-        const item = document.querySelector(`[data-file-id="${fileId}"]`);
-        if (item) {
-            item.classList.add('selected');
-            this.selectedFile = this.files.find(f => f.id === fileId);
+    // --- LOGIQUE DE SÉLECTION ---
+
+    toggleSelection(id) {
+        if (this.selectedItems.has(id)) {
+            this.selectedItems.delete(id);
+        } else {
+            this.selectedItems.add(id);
         }
+        this.renderFiles(); // Refresh pour l'état visuel
     },
 
-    renderTrash() {
-        const container = document.getElementById('trash-container');
-        container.innerHTML = '';
-        if (!this.trash || this.trash.length === 0) {
-            container.innerHTML = '<div style="text-align: center; padding: 40px; color: #666;">Corbeille vide</div>';
-            return;
-        }
-        this.trash.forEach(item => {
-            const div = document.createElement('div');
-            div.className = 'file-item';
-            const icon = item.item_type === 'folder' ? 'fa-folder' : this.getFileIcon(item.original_name);
-            div.innerHTML = `
-                <i class="fas ${icon} file-icon"></i>
-                <div class="file-name">${item.original_name}</div>
-                <div class="file-meta">Supprimé le ${new Date(item.created_at).toLocaleDateString()}</div>
+    clearSelection() {
+        this.selectedItems.clear();
+        this.renderFiles();
+    },
+
+    updateSelectionToolbar() {
+        let toolbar = document.getElementById('selection-toolbar');
+        if (!toolbar) {
+            toolbar = document.createElement('div');
+            toolbar.id = 'selection-toolbar';
+            toolbar.className = 'toolbar selection-toolbar';
+            toolbar.style.display = 'none';
+            toolbar.style.background = '#e3f2fd';
+            toolbar.innerHTML = `
+                <div class="toolbar-left">
+                    <span id="selection-count" style="font-weight:bold; margin-right:15px;">0 élément(s)</span>
+                    <button class="btn btn-secondary btn-sm" onclick="App.clearSelection()"><i class="fas fa-times"></i></button>
+                </div>
+                <div class="toolbar-right">
+                    <button class="btn btn-primary" onclick="App.openMoveModal()"><i class="fas fa-folder-open"></i> Déplacer</button>
+                    <button class="btn btn-danger" style="background:#dc3545; color:white;" onclick="App.deleteSelected()"><i class="fas fa-trash"></i> Supprimer</button>
+                </div>
             `;
-            div.addEventListener('click', () => this.restoreItem(item.item_id));
-            container.appendChild(div);
-        });
-    },
+            document.querySelector('.toolbar').after(toolbar);
+        }
 
-    async restoreItem(itemId) {
-        const data = await this.apiRequest('restore', { method: 'POST', body: JSON.stringify({ id: itemId }) });
-        if (data.success) { this.showToast('Restauré'); this.loadTrash(); } else { this.showToast('Erreur'); }
-    },
-
-    handleNavigation(e) {
-        e.preventDefault();
-        const view = e.currentTarget.dataset.view;
-        document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
-        e.currentTarget.classList.add('active');
-        this.currentView = view;
-        
-        const fileContainer = document.getElementById('file-container');
-        const trashContainer = document.getElementById('trash-container');
-        const uploadBtn = document.getElementById('upload-btn');
-        const newFolderBtn = document.getElementById('new-folder-btn');
-
-        if (view === 'files') {
-            fileContainer.style.display = 'grid';
-            trashContainer.style.display = 'none';
-            uploadBtn.style.display = 'inline-flex';
-            newFolderBtn.style.display = 'inline-flex';
-            this.loadFiles();
-        } else if (view === 'trash') {
-            fileContainer.style.display = 'none';
-            trashContainer.style.display = 'grid';
-            uploadBtn.style.display = 'none';
-            newFolderBtn.style.display = 'none';
-            this.loadTrash();
+        const count = this.selectedItems.size;
+        if (count > 0) {
+            toolbar.style.display = 'flex';
+            document.getElementById('selection-count').textContent = `${count} élément(s)`;
+        } else {
+            toolbar.style.display = 'none';
         }
     },
 
-    switchView(e) {
-        const view = e.currentTarget.dataset.view;
-        document.querySelectorAll('.view-btn').forEach(btn => btn.classList.remove('active'));
-        e.currentTarget.classList.add('active');
-        document.getElementById('file-container').className = view === 'grid' ? 'file-grid' : 'file-grid file-list';
+    selectFile(fileId) {
+        this.selectedFile = this.files.find(f => f.id === fileId);
     },
 
-    setupDragAndDrop() {
-        const dropZone = document.getElementById('drop-zone');
-        const main = document.querySelector('.main-content');
-        ['dragenter', 'dragover'].forEach(e => main.addEventListener(e, (evt) => { evt.preventDefault(); dropZone.classList.add('active'); }));
-        ['dragleave', 'drop'].forEach(e => main.addEventListener(e, (evt) => { evt.preventDefault(); dropZone.classList.remove('active'); }));
-        main.addEventListener('drop', (e) => {
-            if (e.dataTransfer.files.length > 0) this.uploadFiles(e.dataTransfer.files);
-        });
-    },
-
-    async uploadFiles(files) {
-        this.showLoading();
-        const groupId = this.currentFolder || this.generateUUID();
-        const pwd = document.getElementById('file-password').value; // Récupère mot de passe modale
-
-        for (let i = 0; i < files.length; i++) {
-            const formData = new FormData();
-            formData.append('file', files[i]);
-            formData.append('group_id', groupId);
-            if(pwd) formData.append('password', pwd);
-
-            const data = await this.apiRequest('upload', { method: 'POST', body: formData });
-            if (!data.success) this.showToast(`Erreur upload: ${files[i].name}`);
-        }
-        this.hideLoading();
-        this.showToast('Terminé');
-        this.loadFiles();
-    },
-
-    openUploadModal() { document.getElementById('upload-modal').classList.add('active'); },
-    openFolderModal() { document.getElementById('folder-modal').classList.add('active'); },
-
-    setupModals() {
-        document.querySelectorAll('.close-btn').forEach(btn => btn.addEventListener('click', function() { this.closest('.modal').classList.remove('active'); }));
-        
-        // Upload Modal
-        document.getElementById('cancel-upload').addEventListener('click', () => document.getElementById('upload-modal').classList.remove('active'));
-        document.getElementById('confirm-upload').addEventListener('click', () => {
-            const input = document.getElementById('file-input');
-            if (input.files.length) { 
-                this.uploadFiles(input.files); 
-                document.getElementById('upload-modal').classList.remove('active'); 
-                input.value = ''; 
-                document.getElementById('file-password').value = ''; // Reset password
-            }
-        });
-
-        // Toggle password input visibility
-        const pwdCheck = document.getElementById('password-check');
-        if (pwdCheck) {
-            pwdCheck.addEventListener('change', (e) => {
-                document.getElementById('file-password').style.display = e.target.checked ? 'block' : 'none';
-            });
-        }
-
-        // Folder Modal
-        document.getElementById('cancel-folder').addEventListener('click', () => document.getElementById('folder-modal').classList.remove('active'));
-        document.getElementById('confirm-folder').addEventListener('click', () => {
-            const name = document.getElementById('folder-name').value.trim();
-            if (name) { 
-                this.currentFolder = this.generateUUID(); 
-                this.loadFiles(); 
-                document.getElementById('folder-modal').classList.remove('active'); 
-                document.getElementById('folder-name').value = ''; 
-            }
-        });
-
-        // Rename Modal
-        document.getElementById('cancel-rename').addEventListener('click', () => document.getElementById('rename-modal').classList.remove('active'));
-        document.getElementById('confirm-rename').addEventListener('click', async () => {
-            const newName = document.getElementById('rename-input').value.trim();
-            if (newName && this.selectedFile) {
-                await this.apiRequest('rename', { method: 'POST', body: JSON.stringify({ id: this.selectedFile.id, new_name: newName }) });
-                this.loadFiles(); document.getElementById('rename-modal').classList.remove('active');
-            }
-        });
-        document.getElementById('close-metadata').addEventListener('click', () => document.getElementById('metadata-modal').classList.remove('active'));
-    },
+    // --- MENUS CONTEXTUELS ET ACTIONS ---
 
     setupContextMenu() {
         const menu = document.getElementById('context-menu');
-
         document.querySelectorAll('.context-item').forEach(item => {
             item.addEventListener('click', async (e) => {
                 e.stopPropagation();
                 const action = item.dataset.action;
                 menu.classList.remove('active');
 
-                // CAS 1 : Action sur un FICHIER
                 if (this.selectedFile) {
                     switch (action) {
-                        case 'download': 
-                            await this.downloadFile(this.selectedFile); 
-                            break;
+                        case 'download': await this.downloadFile(this.selectedFile); break;
                         case 'rename':
                             document.getElementById('rename-input').value = this.selectedFile.name;
                             document.getElementById('rename-modal').classList.add('active');
                             break;
-                        case 'metadata': 
-                            this.showMetadata(this.selectedFile, 'file'); 
-                            break;
-                        case 'delete': 
-                            await this.deleteFile(this.selectedFile.id, 'file'); 
-                            break;
+                        case 'metadata': this.showMetadata(this.selectedFile, 'file'); break;
+                        case 'delete': await this.deleteFile(this.selectedFile.id, 'file'); break;
                     }
-                }
-                // CAS 2 : Action sur un DOSSIER
-                else if (this.selectedFolderId) {
+                } else if (this.selectedFolderId) {
                     if (action === 'delete') {
                         if(confirm('Supprimer ce dossier et tout son contenu ?')) {
                             await this.deleteFile(this.selectedFolderId, 'group');
@@ -529,8 +448,7 @@ const App = {
 
     showContextMenu(e, itemId, type) {
         e.preventDefault();
-        const contextMenu = document.getElementById('context-menu');
-        
+        const menu = document.getElementById('context-menu');
         this.selectedFile = null;
         this.selectedFolderId = null;
 
@@ -555,9 +473,9 @@ const App = {
             btnDelete.innerHTML = '<i class="fas fa-trash"></i> Supprimer le dossier';
         }
 
-        contextMenu.style.left = `${e.pageX}px`;
-        contextMenu.style.top = `${e.pageY}px`;
-        contextMenu.classList.add('active');
+        menu.style.left = `${e.pageX}px`;
+        menu.style.top = `${e.pageY}px`;
+        menu.classList.add('active');
     },
 
     showMetadata(item, type = 'file') {
@@ -579,11 +497,12 @@ const App = {
         document.getElementById('metadata-modal').classList.add('active');
     },
 
+    // --- TÉLÉCHARGEMENT ---
+
     async downloadFile(file) {
         this.showToast('Préparation du téléchargement...');
         let password = this.currentGroupPassword || '';
         
-        // Si le fichier a un mot de passe et qu'on ne l'a pas déjà en mémoire pour le groupe
         if (file.has_password == 1 && !password) {
             password = prompt("Entrez le mot de passe pour télécharger ce fichier :");
             if (!password) return;
@@ -597,7 +516,6 @@ const App = {
         this.showToast('Création de l\'archive...');
         let password = this.currentGroupPassword || '';
         
-        // On vérifie si un des fichiers du groupe a un mot de passe
         const filesInGroup = this.files.filter(f => f.group_id === groupId);
         if (filesInGroup.some(f => f.has_password == 1) && !password) {
             password = prompt("Mot de passe requis pour déchiffrer le dossier :");
@@ -610,28 +528,226 @@ const App = {
 
     async triggerDownload(url, filename) {
         try {
-            const res = await fetch(url, { 
-                headers: { 'Authorization': `Bearer ${this.token}` },
-                mode: 'cors'
-            });
+            const res = await fetch(url, { headers: { 'Authorization': `Bearer ${this.token}` }, mode: 'cors' });
             if (!res.ok) throw new Error("Erreur serveur ou mot de passe incorrect");
             const blob = await res.blob();
-            const downloadUrl = window.URL.createObjectURL(blob);
-            const a = document.createElement('a'); 
-            a.href = downloadUrl;
-            a.download = filename;
-            document.body.appendChild(a); 
-            a.click(); 
-            a.remove(); 
-            window.URL.revokeObjectURL(downloadUrl);
-        } catch (e) { 
-            this.showToast(e.message || 'Erreur téléchargement'); 
+            const link = document.createElement('a');
+            link.href = window.URL.createObjectURL(blob);
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+        } catch (e) {
+            this.showToast(e.message || 'Erreur téléchargement');
         }
+    },
+
+    // --- ACTIONS DE MASSE (DÉPLACER) ---
+
+    openMoveModal() {
+        if (this.selectedItems.size === 0) return;
+
+        const folders = new Set();
+        this.files.forEach(f => { if (f.group_id) folders.add(f.group_id); });
+
+        let folderOptions = `<div class="folder-option" onclick="App.confirmMove('root')">
+            <i class="fas fa-home"></i> Racine
+        </div>`;
+
+        folders.forEach(groupId => {
+            if (groupId !== this.currentFolder) {
+                folderOptions += `
+                <div class="folder-option" onclick="App.confirmMove('${groupId}')">
+                    <i class="fas fa-folder"></i> Dossier ${groupId.substring(0, 8)}
+                </div>`;
+            }
+        });
+
+        const existingModal = document.getElementById('move-modal');
+        if (existingModal) existingModal.remove();
+
+        const modalHTML = `
+        <div id="move-modal" class="modal active">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Déplacer ${this.selectedItems.size} élément(s) vers...</h3>
+                    <button class="close-btn" onclick="document.getElementById('move-modal').remove()">&times;</button>
+                </div>
+                <div class="modal-body" style="max-height: 300px; overflow-y: auto;">
+                    ${folderOptions}
+                </div>
+            </div>
+        </div>`;
+        document.body.insertAdjacentHTML('beforeend', modalHTML);
+    },
+
+    async confirmMove(targetGroupId) {
+        document.getElementById('move-modal').remove();
+        this.showLoading();
+
+        try {
+            const response = await this.apiRequest('move', {
+                method: 'POST',
+                body: JSON.stringify({
+                    ids: Array.from(this.selectedItems),
+                    target_group_id: targetGroupId
+                })
+            });
+
+            if (response.success) {
+                this.showToast('Éléments déplacés avec succès');
+                this.clearSelection();
+                this.loadFiles();
+            } else {
+                this.showToast('Erreur lors du déplacement');
+            }
+        } catch (e) {
+            this.showToast('Erreur serveur');
+        }
+        this.hideLoading();
+    },
+
+    // --- ACTIONS DE MASSE (SUPPRIMER) ---
+
+    async deleteSelected() {
+        if (this.selectedItems.size === 0) return;
+        if (!confirm(`Voulez-vous vraiment supprimer ${this.selectedItems.size} fichier(s) ?`)) return;
+
+        this.showLoading();
+        const deletePromises = Array.from(this.selectedItems).map(id => 
+            this.apiRequest('delete', { method: 'POST', body: JSON.stringify({ id: id, type: 'file' }) })
+        );
+
+        await Promise.all(deletePromises);
+        this.showToast('Suppression terminée');
+        this.clearSelection();
+        this.loadFiles();
+        this.hideLoading();
     },
 
     async deleteFile(id, type) { 
         await this.apiRequest('delete', { method: 'POST', body: JSON.stringify({ id: id, type: type }) }); 
         this.loadFiles();
+    },
+
+    // --- TRASH & AUTRES ---
+
+    async loadTrash() {
+        this.showLoading();
+        const data = await this.apiRequest('trash_list');
+        if (data.success) { this.trash = data.trash; this.renderTrash(); }
+        this.hideLoading();
+    },
+
+    handleNavigation(e) {
+        e.preventDefault();
+        const view = e.currentTarget.dataset.view;
+        document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
+        e.currentTarget.classList.add('active');
+        this.currentView = view;
+        
+        const fileContainer = document.getElementById('file-container');
+        const trashContainer = document.getElementById('trash-container');
+        const uploadBtn = document.getElementById('upload-btn');
+        const newFolderBtn = document.getElementById('new-folder-btn');
+        const selectionToolbar = document.getElementById('selection-toolbar');
+
+        if (view === 'files') {
+            fileContainer.style.display = 'grid';
+            trashContainer.style.display = 'none';
+            uploadBtn.style.display = 'inline-flex';
+            newFolderBtn.style.display = 'inline-flex';
+            if (selectionToolbar && this.selectedItems.size > 0) selectionToolbar.style.display = 'flex';
+            this.loadFiles();
+        } else if (view === 'trash') {
+            fileContainer.style.display = 'none';
+            trashContainer.style.display = 'grid';
+            uploadBtn.style.display = 'none';
+            newFolderBtn.style.display = 'none';
+            if (selectionToolbar) selectionToolbar.style.display = 'none';
+            this.loadTrash();
+        }
+    },
+
+    switchView(e) {
+        const view = e.currentTarget.dataset.view;
+        document.querySelectorAll('.view-btn').forEach(btn => btn.classList.remove('active'));
+        e.currentTarget.classList.add('active');
+        document.getElementById('file-container').className = view === 'grid' ? 'file-grid' : 'file-grid file-list';
+    },
+
+    setupDragAndDrop() {
+        const dropZone = document.getElementById('drop-zone');
+        const main = document.querySelector('.main-content');
+        ['dragenter', 'dragover'].forEach(e => main.addEventListener(e, (evt) => { evt.preventDefault(); dropZone.classList.add('active'); }));
+        ['dragleave', 'drop'].forEach(e => main.addEventListener(e, (evt) => { evt.preventDefault(); dropZone.classList.remove('active'); }));
+        main.addEventListener('drop', (e) => {
+            if (e.dataTransfer.files.length > 0) this.uploadFiles(e.dataTransfer.files);
+        });
+    },
+
+    async uploadFiles(files) {
+        this.showLoading();
+        const groupId = this.currentFolder || this.generateUUID();
+        const pwd = document.getElementById('file-password').value;
+
+        for (let i = 0; i < files.length; i++) {
+            const formData = new FormData();
+            formData.append('file', files[i]);
+            formData.append('group_id', groupId);
+            if(pwd) formData.append('password', pwd);
+
+            await this.apiRequest('upload', { method: 'POST', body: formData });
+        }
+        this.hideLoading();
+        this.showToast('Terminé');
+        this.loadFiles();
+    },
+
+    openUploadModal() { document.getElementById('upload-modal').classList.add('active'); },
+    openFolderModal() { document.getElementById('folder-modal').classList.add('active'); },
+
+    setupModals() {
+        document.querySelectorAll('.close-btn').forEach(btn => btn.addEventListener('click', function() { this.closest('.modal').classList.remove('active'); }));
+        
+        document.getElementById('cancel-upload').addEventListener('click', () => document.getElementById('upload-modal').classList.remove('active'));
+        document.getElementById('confirm-upload').addEventListener('click', () => {
+            const input = document.getElementById('file-input');
+            if (input.files.length) { 
+                this.uploadFiles(input.files); 
+                document.getElementById('upload-modal').classList.remove('active'); 
+                input.value = ''; 
+                document.getElementById('file-password').value = ''; 
+            }
+        });
+
+        const pwdCheck = document.getElementById('password-check');
+        if (pwdCheck) {
+            pwdCheck.addEventListener('change', (e) => {
+                document.getElementById('file-password').style.display = e.target.checked ? 'block' : 'none';
+            });
+        }
+
+        document.getElementById('cancel-folder').addEventListener('click', () => document.getElementById('folder-modal').classList.remove('active'));
+        document.getElementById('confirm-folder').addEventListener('click', () => {
+            const name = document.getElementById('folder-name').value.trim();
+            if (name) { 
+                this.currentFolder = this.generateUUID(); 
+                this.loadFiles(); 
+                document.getElementById('folder-modal').classList.remove('active'); 
+                document.getElementById('folder-name').value = ''; 
+            }
+        });
+
+        document.getElementById('cancel-rename').addEventListener('click', () => document.getElementById('rename-modal').classList.remove('active'));
+        document.getElementById('confirm-rename').addEventListener('click', async () => {
+            const newName = document.getElementById('rename-input').value.trim();
+            if (newName && this.selectedFile) {
+                await this.apiRequest('rename', { method: 'POST', body: JSON.stringify({ id: this.selectedFile.id, new_name: newName }) });
+                this.loadFiles(); document.getElementById('rename-modal').classList.remove('active');
+            }
+        });
+        document.getElementById('close-metadata').addEventListener('click', () => document.getElementById('metadata-modal').classList.remove('active'));
     },
 
     handleSearch(e) {
@@ -653,6 +769,53 @@ const App = {
     generateUUID() { return crypto.randomUUID(); }
 };
 
-// Global access for onclick events
+// Injection CSS pour la sélection
+const style = document.createElement('style');
+style.innerHTML = `
+    .file-item { position: relative; }
+    .file-item.selected { border-color: #007bff; background-color: #e3f2fd; }
+    .selection-checkbox {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        width: 20px;
+        height: 20px;
+        border: 2px solid #ccc;
+        border-radius: 4px;
+        background: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        opacity: 0;
+        transition: opacity 0.2s;
+        z-index: 10;
+    }
+    .file-item:hover .selection-checkbox, 
+    .file-item.selected .selection-checkbox {
+        opacity: 1;
+    }
+    .selection-checkbox.checked {
+        background-color: #007bff;
+        border-color: #007bff;
+        color: white;
+    }
+    .folder-option {
+        padding: 10px;
+        border-bottom: 1px solid #eee;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    .folder-option:hover { background: #f5f5f5; }
+    .selection-toolbar { 
+        justify-content: space-between; 
+        padding: 10px 20px; 
+        border-bottom: 1px solid #ddd;
+    }
+`;
+document.head.appendChild(style);
+
 window.App = App;
 document.addEventListener('DOMContentLoaded', () => App.init());
