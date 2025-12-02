@@ -6,7 +6,9 @@ const App = {
     userEmail: null,
     currentView: 'files',
     currentFolder: null,
+    currentGroupPassword: null, // Stockage temporaire du mot de passe du dossier
     selectedFile: null,
+    selectedFolderId: null,
     files: [],
     trash: [],
 
@@ -61,7 +63,8 @@ const App = {
         this.setupContextMenu();
 
         document.addEventListener('click', () => {
-            document.getElementById('context-menu').classList.remove('active');
+            const contextMenu = document.getElementById('context-menu');
+            if (contextMenu) contextMenu.classList.remove('active');
         });
     },
 
@@ -149,6 +152,13 @@ const App = {
 
         if (data.success) {
             this.files = data.files;
+
+            // LOGIQUE MOT DE PASSE GROUPE
+            // Si on est dans un dossier et qu'au moins un fichier a un mot de passe, on demande le MDP
+            if (this.currentFolder && this.files.some(f => f.has_password == 1) && !this.currentGroupPassword) {
+                this.promptGroupPassword();
+            }
+
             this.renderFiles();
         }
         this.hideLoading();
@@ -161,7 +171,7 @@ const App = {
         if (this.currentFolder) {
             // Si dans un dossier
             breadcrumb.innerHTML = `
-                <span class="breadcrumb-item" id="bc-home" style="cursor:pointer; color: #3b82f6;">
+                <span class="breadcrumb-item" onclick="App.goToRoot()" style="cursor:pointer; color: #3b82f6;">
                     <i class="fas fa-home"></i> Accueil
                 </span>
                 <span style="margin: 0 5px; color: #999;">/</span>
@@ -169,11 +179,6 @@ const App = {
                     <i class="fas fa-folder-open"></i> Dossier ${this.currentFolder.substring(0, 8)}
                 </span>
             `;
-            // Clic sur "Accueil" pour revenir en arrière
-            document.getElementById('bc-home').addEventListener('click', () => {
-                this.currentFolder = null;
-                this.loadFiles();
-            });
         } else {
             // Si à la racine
             breadcrumb.innerHTML = `
@@ -182,6 +187,53 @@ const App = {
                 </span>
             `;
         }
+    },
+
+    goToRoot() {
+        this.currentFolder = null;
+        this.currentGroupPassword = null; // Reset du mot de passe quand on sort
+        this.loadFiles();
+    },
+
+    // --- GESTION MOT DE PASSE ---
+    promptGroupPassword() {
+        // Injection dynamique de la modale si elle n'existe pas
+        if (!document.getElementById('password-modal')) {
+            const modalHTML = `
+            <div id="password-modal" class="modal active">
+                <div class="modal-content">
+                    <div class="modal-header"><h3>Mot de passe requis</h3></div>
+                    <div class="modal-body">
+                        <p>Ce dossier contient des fichiers protégés. Entrez le mot de passe pour y accéder.</p>
+                        <input type="password" id="group-password-input" class="input-field" placeholder="Mot de passe">
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-secondary" onclick="App.cancelPassword()">Annuler</button>
+                        <button class="btn btn-primary" onclick="App.submitPassword()">Valider</button>
+                    </div>
+                </div>
+            </div>`;
+            document.body.insertAdjacentHTML('beforeend', modalHTML);
+        } else {
+            document.getElementById('password-modal').classList.add('active');
+        }
+        const input = document.getElementById('group-password-input');
+        if (input) input.focus();
+    },
+
+    submitPassword() {
+        const pass = document.getElementById('group-password-input').value;
+        if (pass) {
+            this.currentGroupPassword = pass;
+            document.getElementById('password-modal').classList.remove('active');
+            this.showToast('Mot de passe enregistré pour la session');
+        }
+    },
+
+    cancelPassword() {
+        document.getElementById('password-modal').classList.remove('active');
+        // Retour à la racine si on annule
+        this.goToRoot();
     },
 
     async loadTrash() {
@@ -232,10 +284,16 @@ const App = {
         const div = document.createElement('div');
         div.className = 'file-item';
         div.dataset.groupId = groupId;
+        
+        // Vérifie si le dossier contient des fichiers protégés
+        const isProtected = files.some(f => f.has_password == 1);
+        const iconClass = isProtected ? 'fa-folder-closed' : 'fa-folder';
+        const colorStyle = isProtected ? 'color: #e67e22;' : ''; // Orange si protégé
+
         div.innerHTML = `
-            <i class="fas fa-folder file-icon folder"></i>
+            <i class="fas ${iconClass} file-icon folder" style="${colorStyle}"></i>
             <div class="file-name">Dossier ${groupId.substring(0, 8)}</div>
-            <div class="file-meta">${files.length} fichier(s)</div>
+            <div class="file-meta">${files.length} fichier(s) ${isProtected ? '<i class="fas fa-lock" style="font-size:10px"></i>' : ''}</div>
         `;
         
         // --- NAVIGATION AU CLIC SIMPLE ---
@@ -258,6 +316,7 @@ const App = {
             <i class="fas ${icon} file-icon"></i>
             <div class="file-name">${file.name}</div>
             <div class="file-meta">${this.formatFileSize(file.size)}</div>
+            ${file.has_password == 1 ? '<i class="fas fa-lock" style="position:absolute; top:10px; right:10px; color:#aaa;"></i>' : ''}
         `;
         div.addEventListener('click', () => this.selectFile(file.id));
         div.addEventListener('contextmenu', (e) => this.showContextMenu(e, file.id, 'file'));
@@ -359,10 +418,14 @@ const App = {
     async uploadFiles(files) {
         this.showLoading();
         const groupId = this.currentFolder || this.generateUUID();
+        const pwd = document.getElementById('file-password').value; // Récupère mot de passe modale
+
         for (let i = 0; i < files.length; i++) {
             const formData = new FormData();
             formData.append('file', files[i]);
             formData.append('group_id', groupId);
+            if(pwd) formData.append('password', pwd);
+
             const data = await this.apiRequest('upload', { method: 'POST', body: formData });
             if (!data.success) this.showToast(`Erreur upload: ${files[i].name}`);
         }
@@ -376,11 +439,28 @@ const App = {
 
     setupModals() {
         document.querySelectorAll('.close-btn').forEach(btn => btn.addEventListener('click', function() { this.closest('.modal').classList.remove('active'); }));
+        
+        // Upload Modal
         document.getElementById('cancel-upload').addEventListener('click', () => document.getElementById('upload-modal').classList.remove('active'));
         document.getElementById('confirm-upload').addEventListener('click', () => {
             const input = document.getElementById('file-input');
-            if (input.files.length) { this.uploadFiles(input.files); document.getElementById('upload-modal').classList.remove('active'); input.value = ''; }
+            if (input.files.length) { 
+                this.uploadFiles(input.files); 
+                document.getElementById('upload-modal').classList.remove('active'); 
+                input.value = ''; 
+                document.getElementById('file-password').value = ''; // Reset password
+            }
         });
+
+        // Toggle password input visibility
+        const pwdCheck = document.getElementById('password-check');
+        if (pwdCheck) {
+            pwdCheck.addEventListener('change', (e) => {
+                document.getElementById('file-password').style.display = e.target.checked ? 'block' : 'none';
+            });
+        }
+
+        // Folder Modal
         document.getElementById('cancel-folder').addEventListener('click', () => document.getElementById('folder-modal').classList.remove('active'));
         document.getElementById('confirm-folder').addEventListener('click', () => {
             const name = document.getElementById('folder-name').value.trim();
@@ -391,6 +471,8 @@ const App = {
                 document.getElementById('folder-name').value = ''; 
             }
         });
+
+        // Rename Modal
         document.getElementById('cancel-rename').addEventListener('click', () => document.getElementById('rename-modal').classList.remove('active'));
         document.getElementById('confirm-rename').addEventListener('click', async () => {
             const newName = document.getElementById('rename-input').value.trim();
@@ -401,8 +483,6 @@ const App = {
         });
         document.getElementById('close-metadata').addEventListener('click', () => document.getElementById('metadata-modal').classList.remove('active'));
     },
-
-// A REMPLACER DANS APP.JS
 
     setupContextMenu() {
         const menu = document.getElementById('context-menu');
@@ -417,7 +497,7 @@ const App = {
                 if (this.selectedFile) {
                     switch (action) {
                         case 'download': 
-                            await this.downloadFile(this.selectedFile.id); 
+                            await this.downloadFile(this.selectedFile); 
                             break;
                         case 'rename':
                             document.getElementById('rename-input').value = this.selectedFile.name;
@@ -439,6 +519,8 @@ const App = {
                         }
                     } else if (action === 'metadata') {
                         this.showMetadata({ id: this.selectedFolderId }, 'folder');
+                    } else if (action === 'download') {
+                        await this.downloadFolder(this.selectedFolderId);
                     }
                 }
             });
@@ -449,44 +531,37 @@ const App = {
         e.preventDefault();
         const contextMenu = document.getElementById('context-menu');
         
-        // --- CORRECTION CRITIQUE : ON REMET TOUT A ZÉRO ---
         this.selectedFile = null;
         this.selectedFolderId = null;
 
-        // Récupération des boutons du menu
         const btnRename = document.querySelector('[data-action="rename"]');
         const btnDownload = document.querySelector('[data-action="download"]');
         const btnInfo = document.querySelector('[data-action="metadata"]');
         const btnDelete = document.querySelector('[data-action="delete"]');
 
         if (type === 'file') {
-            // C'est un fichier : On active tout
             this.selectedFile = this.files.find(f => f.id === itemId);
-            
             btnRename.style.display = 'block';
             btnDownload.style.display = 'block';
+            btnDownload.innerHTML = '<i class="fas fa-download"></i> Télécharger';
             btnInfo.style.display = 'block';
             btnDelete.innerHTML = '<i class="fas fa-trash"></i> Supprimer';
         } else {
-            // C'est un dossier : On cache ce qui est impossible techniquement
             this.selectedFolderId = itemId;
-            
-            btnRename.style.display = 'none';   // Impossible de renommer un dossier virtuel
-            btnDownload.style.display = 'none'; // Impossible de télécharger un dossier (pas zippé)
-            btnInfo.style.display = 'block';    // On laisse les infos !
+            btnRename.style.display = 'none';
+            btnDownload.style.display = 'block';
+            btnDownload.innerHTML = '<i class="fas fa-file-archive"></i> Télécharger le dossier';
+            btnInfo.style.display = 'block';
             btnDelete.innerHTML = '<i class="fas fa-trash"></i> Supprimer le dossier';
         }
 
-        // Positionnement
         contextMenu.style.left = `${e.pageX}px`;
         contextMenu.style.top = `${e.pageY}px`;
         contextMenu.classList.add('active');
     },
 
-    // BONUS : Afficher les infos d'un dossier
     showMetadata(item, type = 'file') {
         const content = document.getElementById('metadata-content');
-        
         if (type === 'file') {
             content.innerHTML = `
                 <div class="metadata-row"><div class="metadata-label">Type</div><div class="metadata-value">Fichier</div></div>
@@ -495,9 +570,6 @@ const App = {
                 <div class="metadata-row"><div class="metadata-label">ID</div><div class="metadata-value" style="font-size:10px">${item.id}</div></div>
             `;
         } else {
-            // Calcul du nombre de fichiers dans ce dossier
-            // On cherche dans this.files si on est à la racine, sinon il faut compter autrement
-            // Simplification : on affiche juste l'ID
             content.innerHTML = `
                 <div class="metadata-row"><div class="metadata-label">Type</div><div class="metadata-value">Dossier Virtuel</div></div>
                 <div class="metadata-row"><div class="metadata-label">ID Groupe</div><div class="metadata-value" style="font-size:10px">${item.id}</div></div>
@@ -507,27 +579,60 @@ const App = {
         document.getElementById('metadata-modal').classList.add('active');
     },
 
+    async downloadFile(file) {
+        this.showToast('Préparation du téléchargement...');
+        let password = this.currentGroupPassword || '';
+        
+        // Si le fichier a un mot de passe et qu'on ne l'a pas déjà en mémoire pour le groupe
+        if (file.has_password == 1 && !password) {
+            password = prompt("Entrez le mot de passe pour télécharger ce fichier :");
+            if (!password) return;
+        }
 
-    async downloadFile(fileId) {
-        this.showToast('Téléchargement...');
+        const url = `${API_URL}?action=download&id=${file.id}&password=${encodeURIComponent(password)}`;
+        this.triggerDownload(url, file.name);
+    },
+
+    async downloadFolder(groupId) {
+        this.showToast('Création de l\'archive...');
+        let password = this.currentGroupPassword || '';
+        
+        // On vérifie si un des fichiers du groupe a un mot de passe
+        const filesInGroup = this.files.filter(f => f.group_id === groupId);
+        if (filesInGroup.some(f => f.has_password == 1) && !password) {
+            password = prompt("Mot de passe requis pour déchiffrer le dossier :");
+            if (!password) return;
+        }
+
+        const url = `${API_URL}?action=download_folder&group_id=${groupId}&password=${encodeURIComponent(password)}`;
+        this.triggerDownload(url, `Dossier_${groupId.substring(0,8)}.zip`);
+    },
+
+    async triggerDownload(url, filename) {
         try {
-            const res = await fetch(`${API_URL}?action=download&id=${fileId}`, { 
+            const res = await fetch(url, { 
                 headers: { 'Authorization': `Bearer ${this.token}` },
                 mode: 'cors'
             });
-            if (!res.ok) throw new Error();
+            if (!res.ok) throw new Error("Erreur serveur ou mot de passe incorrect");
             const blob = await res.blob();
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a'); a.href = url;
-            a.download = this.selectedFile ? this.selectedFile.name : 'file';
-            document.body.appendChild(a); a.click(); a.remove(); window.URL.revokeObjectURL(url);
-        } catch (e) { this.showToast('Erreur téléchargement'); }
+            const downloadUrl = window.URL.createObjectURL(blob);
+            const a = document.createElement('a'); 
+            a.href = downloadUrl;
+            a.download = filename;
+            document.body.appendChild(a); 
+            a.click(); 
+            a.remove(); 
+            window.URL.revokeObjectURL(downloadUrl);
+        } catch (e) { 
+            this.showToast(e.message || 'Erreur téléchargement'); 
+        }
     },
 
-    async deleteFile(id) { 
-        await this.apiRequest('delete', { method: 'POST', body: JSON.stringify({ id: id, type: 'file' }) }); 
+    async deleteFile(id, type) { 
+        await this.apiRequest('delete', { method: 'POST', body: JSON.stringify({ id: id, type: type }) }); 
+        this.loadFiles();
     },
-
 
     handleSearch(e) {
         const q = e.target.value.toLowerCase();
@@ -548,4 +653,6 @@ const App = {
     generateUUID() { return crypto.randomUUID(); }
 };
 
+// Global access for onclick events
+window.App = App;
 document.addEventListener('DOMContentLoaded', () => App.init());
