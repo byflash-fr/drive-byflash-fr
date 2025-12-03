@@ -634,3 +634,65 @@ body {
         align-items: stretch;
     }
 }
+
+/* Bouton Paramètres Dossier */
+.file-item {
+    position: relative; /* Nécessaire pour positionner l'engrenage */
+}
+
+.btn-settings {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: transparent;
+    border: none;
+    color: #999;
+    cursor: pointer;
+    font-size: 16px;
+    display: none; /* Caché par défaut */
+    padding: 5px;
+    border-radius: 50%;
+}
+
+.file-item:hover .btn-settings {
+    display: block; /* Visible au survol */
+    background-color: rgba(0,0,0,0.05);
+}
+
+.btn-settings:hover {
+    color: #333;
+    background-color: rgba(0,0,0,0.1);
+}
+
+/* Bouton Copier Lien */
+.btn-copy {
+    background: #f0f0f0;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 12px;
+    cursor: pointer;
+    color: #555;
+    transition: all 0.2s;
+}
+
+.btn-copy:hover {
+    background: #e0e0e0;
+    color: #000;
+}
+
+/* Input Color plus joli */
+input[type="color"] {
+    -webkit-appearance: none;
+    border: none;
+    width: 100%;
+    height: 40px;
+    cursor: pointer;
+}
+input[type="color"]::-webkit-color-swatch-wrapper {
+    padding: 0;
+}
+input[type="color"]::-webkit-color-swatch {
+    border: none;
+    border-radius: 4px;
+}
