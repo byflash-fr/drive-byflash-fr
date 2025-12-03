@@ -1,4 +1,4 @@
-// app.js - Byflash Drive Frontend Logic v2.4 (Version Finale Corrigée)
+// app.js - Byflash Drive Frontend Logic v3.0 (Version Finale & Complète)
 
 const API_URL = 'https://api.byflash.fr/index.php'; // Vérifiez votre URL
 
@@ -6,12 +6,13 @@ const App = {
     token: null,
     userEmail: null,
     files: [],
-    trash: [], // Stockage local de la corbeille
+    trash: [],
     currentView: 'files', // 'files' ou 'trash'
-    currentFolder: null, // Null = Racine, Sinon = ID du groupe
-    selectedFile: null, 
+    currentFolder: null,  // Null = Racine, Sinon = ID du groupe
+    selectedFile: null,
     selectedFolderId: null,
     selectedItems: new Set(),
+    editingGroupId: null, // Pour stocker l'ID du dossier en cours d'édition
     
     // --- INITIALISATION ---
     init() {
@@ -35,44 +36,52 @@ const App = {
         document.getElementById('login-form').addEventListener('submit', (e) => this.handleLogin(e));
         document.getElementById('logout-btn').addEventListener('click', () => this.handleLogout());
         
-        // Navigation Menu (CORRECTION ICI)
+        // Navigation Menu Principal (Switch entre Fichiers et Corbeille)
         document.querySelectorAll('.nav-item').forEach(item => {
             item.addEventListener('click', (e) => this.handleNavigation(e));
         });
 
-        // Navigation & Upload
+        // Vue Grille / Liste
+        document.querySelectorAll('.view-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => this.switchView(e));
+        });
+
+        // Actions Principales
         document.getElementById('upload-btn').addEventListener('click', () => document.getElementById('upload-modal').classList.add('active'));
         document.getElementById('confirm-upload')?.addEventListener('click', () => this.handleUpload());
-        document.getElementById('new-folder-btn')?.addEventListener('click', () => document.getElementById('folder-modal').classList.add('active'));
+        
+        // Création Dossier
+        const newFolderBtn = document.getElementById('new-folder-btn');
+        if(newFolderBtn) {
+            newFolderBtn.addEventListener('click', () => {
+                document.getElementById('folder-name').value = '';
+                document.getElementById('folder-modal').classList.add('active');
+            });
+        }
         document.getElementById('confirm-folder')?.addEventListener('click', () => this.createFolder());
 
         // Recherche
         document.getElementById('search-input')?.addEventListener('input', (e) => this.handleSearch(e));
 
-        // Fermeture Modales
+        // Fermeture Modales (X et Annuler)
         document.querySelectorAll('.close-btn, .btn-secondary').forEach(btn => {
             btn.addEventListener('click', (e) => {
                 const modal = e.target.closest('.modal');
-                // On ne ferme pas si c'est un bouton d'action ou de la toolbar
+                // On ne ferme pas si c'est un bouton d'action ou de toolbar
                 if (modal && !e.target.classList.contains('btn-primary') && !e.target.classList.contains('btn-copy') && !e.target.closest('.selection-toolbar')) {
                     modal.classList.remove('active');
                 }
             });
         });
 
-        // Drag & Drop
+        // Drag & Drop et Clic Droit
         this.setupDragAndDrop();
         this.setupContextMenu(); 
         
-        // Clic global
+        // Clic global pour fermer les menus et gérer la désélection
         document.addEventListener('click', (e) => {
             const cm = document.getElementById('context-menu');
             if(cm) cm.classList.remove('active');
-            
-            // Désélection si clic dans le vide (optionnel)
-            if (!e.target.closest('.file-item') && !e.target.closest('.selection-toolbar') && !e.target.closest('.modal') && !e.target.closest('.nav-item')) {
-                // this.clearSelection(); 
-            }
         });
     },
 
@@ -124,19 +133,16 @@ const App = {
         const emailEl = document.getElementById('user-email');
         if(emailEl) emailEl.textContent = this.userEmail;
         
-        // Par défaut on charge les fichiers
+        // Charger la vue par défaut
         this.handleNavigation({ currentTarget: document.querySelector('.nav-item[data-view="files"]') });
     },
 
-    // --- NAVIGATION (CORRECTION MAJEURE) ---
+    // --- NAVIGATION & VUES ---
     handleNavigation(e) {
-        if (!e || !e.currentTarget) return; // Sécurité
-        if (e.preventDefault) e.preventDefault();
-
+        if (!e || !e.currentTarget) return;
         const view = e.currentTarget.dataset.view;
         this.currentView = view;
 
-        // Mise à jour visuelle du menu
         document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
         e.currentTarget.classList.add('active');
 
@@ -147,26 +153,66 @@ const App = {
         const searchBox = document.querySelector('.search-box');
         const selectionToolbar = document.getElementById('selection-toolbar');
 
+        // Reset display
+        fileContainer.style.display = 'none';
+        trashContainer.style.display = 'none';
+
         if (view === 'files') {
-            fileContainer.style.display = 'grid';
-            trashContainer.style.display = 'none';
+            // Vue Fichiers
+            fileContainer.style.display = 'grid'; // Grid par défaut, sera surchargé par applyCurrentViewStyle
+            this.applyCurrentViewStyle();
+            
             if(uploadBtn) uploadBtn.style.display = 'inline-flex';
             if(newFolderBtn) newFolderBtn.style.display = 'inline-flex';
             if(searchBox) searchBox.style.visibility = 'visible';
             if (selectionToolbar && this.selectedItems.size > 0) selectionToolbar.style.display = 'flex';
+            
             this.loadFiles();
         } else if (view === 'trash') {
-            fileContainer.style.display = 'none';
+            // Vue Corbeille
             trashContainer.style.display = 'grid';
+            
             if(uploadBtn) uploadBtn.style.display = 'none';
             if(newFolderBtn) newFolderBtn.style.display = 'none';
             if(searchBox) searchBox.style.visibility = 'hidden';
             if (selectionToolbar) selectionToolbar.style.display = 'none';
+            
             this.loadTrash();
         }
     },
 
-    // --- CHARGEMENT DES DONNÉES ---
+    switchView(e) {
+        const btn = e.currentTarget;
+        const viewType = btn.dataset.view; // 'grid' ou 'list'
+        
+        // Active button state
+        document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        
+        // Save preference
+        localStorage.setItem('view_preference', viewType);
+        this.applyCurrentViewStyle();
+    },
+
+    applyCurrentViewStyle() {
+        const viewType = localStorage.getItem('view_preference') || 'grid';
+        const container = document.getElementById('file-container');
+        
+        // Met à jour les boutons (utile au chargement de la page)
+        document.querySelectorAll('.view-btn').forEach(b => {
+            b.classList.toggle('active', b.dataset.view === viewType);
+        });
+
+        if (viewType === 'list') {
+            container.classList.add('file-list');
+            container.classList.remove('file-grid');
+        } else {
+            container.classList.add('file-grid');
+            container.classList.remove('file-list');
+        }
+    },
+
+    // --- CHARGEMENT DONNÉES ---
     async loadFiles() {
         const spinner = document.getElementById('loading-spinner');
         if(spinner) spinner.style.display = 'block';
@@ -179,13 +225,9 @@ const App = {
                 headers: { 'Authorization': `Bearer ${this.token}` }
             });
             
-            if (res.status === 401) {
-                this.handleLogout();
-                return;
-            }
+            if (res.status === 401) { this.handleLogout(); return; }
 
             const data = await res.json();
-
             if (data.success) {
                 this.files = data.files;
                 this.renderFiles();
@@ -193,18 +235,13 @@ const App = {
             } else {
                 this.showToast(data.error || "Erreur chargement", "error");
             }
-        } catch (error) {
-            console.error(error);
-            this.showToast("Erreur de connexion", "error");
-        }
-
+        } catch (error) { console.error(error); }
         if(spinner) spinner.style.display = 'none';
     },
 
     async loadTrash() {
         const spinner = document.getElementById('loading-spinner');
         if(spinner) spinner.style.display = 'block';
-
         try {
             const res = await fetch(`${API_URL}?action=trash_list`, {
                 headers: { 'Authorization': `Bearer ${this.token}` }
@@ -218,11 +255,10 @@ const App = {
         if(spinner) spinner.style.display = 'none';
     },
 
-    // --- RENDU FICHIERS (DISPLAY) ---
+    // --- RENDU CONTENU ---
     renderFiles() {
         const container = document.getElementById('file-container');
         container.innerHTML = '';
-        
         this.updateSelectionToolbar();
 
         if (!this.files || this.files.length === 0) {
@@ -237,14 +273,17 @@ const App = {
             grouped[gid].push(f);
         });
 
-        // Affichage Racines (Dossiers + Fichiers orphelins)
+        // Affichage Racine (Dossiers + Fichiers orphelins)
         if (!this.currentFolder) {
+            // Dossiers
             Object.keys(grouped).forEach(groupId => {
                 if (groupId !== 'root') {
+                    // Les métadonnées du groupe (nom, couleur) sont dans le premier fichier renvoyé par l'API
                     const meta = grouped[groupId][0]; 
                     container.appendChild(this.createFolderItem(groupId, meta, grouped[groupId].length));
                 }
             });
+            // Fichiers sans dossier
             if (grouped['root']) {
                 grouped['root'].forEach(f => container.appendChild(this.createFileItem(f)));
             }
@@ -259,13 +298,12 @@ const App = {
         }
     },
 
-    // --- RENDU CORBEILLE (DISPLAY) ---
     renderTrash() {
         const container = document.getElementById('trash-container');
         container.innerHTML = '';
-
+        
         if (!this.trash || this.trash.length === 0) {
-            container.innerHTML = '<div style="grid-column:1/-1; text-align:center; color:#888; margin-top:50px;"><i class="fas fa-trash" style="font-size:48px; margin-bottom:10px;"></i><br>La corbeille est vide</div>';
+            container.innerHTML = '<div style="grid-column:1/-1; text-align:center; color:#888; margin-top:50px;">Corbeille vide</div>';
             return;
         }
 
@@ -276,10 +314,10 @@ const App = {
             div.style.cursor = 'default';
             
             const icon = item.item_type === 'group' ? 'fa-folder' : this.getFileIcon(item.original_name);
-            const name = item.original_name || 'Élément supprimé';
+            const name = item.original_name || 'Élément';
 
             div.innerHTML = `
-                <i class="fas ${icon} file-icon" style="color: #666;"></i>
+                <i class="fas ${icon} file-icon" style="color:#666;"></i>
                 <div class="file-name">${name}</div>
                 <div class="file-meta">Supprimé le ${new Date(item.created_at).toLocaleDateString()}</div>
                 <button class="btn-sm btn-primary" onclick="App.restoreItem('${item.item_id}')" style="margin-top:10px;">
@@ -290,11 +328,12 @@ const App = {
         });
     },
 
-    // --- CRÉATION ÉLÉMENTS HTML ---
+    // --- ELEMENTS HTML ---
     createFolderItem(groupId, meta, count) {
         const div = document.createElement('div');
         div.className = 'file-item folder-item';
         
+        // Récupération des infos personnalisées
         const folderName = meta.group_name || `Dossier ${groupId.substring(0,6)}`;
         const folderColor = meta.group_color || '#3b82f6'; 
         const isLocked = meta.is_group_protected == 1; 
@@ -316,7 +355,6 @@ const App = {
 
         div.addEventListener('click', () => this.enterFolder(groupId, isLocked));
         div.addEventListener('contextmenu', (e) => this.showContextMenu(e, groupId, 'folder'));
-        
         return div;
     },
 
@@ -344,46 +382,33 @@ const App = {
                 <button class="btn-sm btn-secondary btn-copy" onclick="event.stopPropagation(); App.copyLink('${file.download_url}')" title="Copier lien">
                     <i class="fas fa-link"></i> Copier
                 </button>
-                <a href="${file.download_url}" class="btn-sm btn-primary" onclick="event.stopPropagation()" target="_blank" title="Télécharger">
+                <button class="btn-sm btn-primary" onclick="event.stopPropagation(); App.downloadFileWithAuth('${file.id}', ${file.has_password})" title="Télécharger">
                     <i class="fas fa-download"></i>
-                </a>
+                </button>
             </div>
         `;
         
-        // Gestion Clic (Sélection avec Ctrl) vs Clic Droit
         div.addEventListener('click', (e) => {
-            if (e.ctrlKey || e.metaKey) {
-                this.toggleSelection(file.id);
-            } 
+            if (e.ctrlKey || e.metaKey) this.toggleSelection(file.id);
         });
-
         div.addEventListener('contextmenu', (e) => {
-            if (!this.selectedItems.has(file.id)) {
-                // Si on fait clic droit sur un élément non sélectionné, ça devient la cible unique
-                // (Optionnel : this.clearSelection(); )
-            }
-            this.selectedFile = file; 
+            if (!this.selectedItems.has(file.id)) this.selectedFile = file; 
+            else this.selectedFile = null;
             this.showContextMenu(e, file.id, 'file');
         });
-
         return div;
     },
 
     // --- SÉLECTION MULTIPLE ---
     toggleSelection(id) {
-        if (this.selectedItems.has(id)) {
-            this.selectedItems.delete(id);
-        } else {
-            this.selectedItems.add(id);
-        }
+        if (this.selectedItems.has(id)) this.selectedItems.delete(id);
+        else this.selectedItems.add(id);
         this.renderFiles();
     },
-
     clearSelection() {
         this.selectedItems.clear();
         this.renderFiles();
     },
-
     updateSelectionToolbar() {
         let toolbar = document.getElementById('selection-toolbar');
         if (!toolbar) {
@@ -392,18 +417,17 @@ const App = {
             toolbar.className = 'selection-toolbar';
             toolbar.innerHTML = `
                 <div class="toolbar-left">
-                    <span id="selection-count" style="font-weight:bold; margin-right:15px; color:#333;">0 élément(s)</span>
+                    <span id="selection-count" style="font-weight:bold; margin-right:15px; color:#333;">0</span>
                     <button class="btn btn-secondary btn-sm" onclick="App.clearSelection()">Annuler</button>
                 </div>
                 <div class="toolbar-right" style="display:flex; gap:10px;">
                     <button class="btn btn-primary" onclick="App.openMoveModal()"><i class="fas fa-folder-open"></i> Déplacer</button>
-                    <button class="btn btn-danger" style="background:#dc3545; color:white; border:none;" onclick="App.deleteSelected()"><i class="fas fa-trash"></i> Supprimer</button>
+                    <button class="btn btn-danger" style="background:#dc3545; color:white; border:none;" onclick="App.deleteSelected()"><i class="fas fa-trash"></i></button>
                 </div>
             `;
             const mainToolbar = document.querySelector('.toolbar');
             if(mainToolbar) mainToolbar.parentNode.insertBefore(toolbar, mainToolbar.nextSibling);
         }
-
         const count = this.selectedItems.size;
         toolbar.style.display = count > 0 ? 'flex' : 'none';
         if(count > 0) document.getElementById('selection-count').textContent = `${count} élément(s)`;
@@ -423,7 +447,7 @@ const App = {
 
                 if (this.selectedFile && !this.selectedFolderId) {
                     switch (action) {
-                        case 'download': await this.downloadFile(this.selectedFile); break;
+                        case 'download': await this.downloadFileWithAuth(this.selectedFile.id, this.selectedFile.has_password); break;
                         case 'rename': 
                             const newName = prompt("Nouveau nom :", this.selectedFile.name);
                             if(newName) this.apiRequest('rename', { method:'POST', body: JSON.stringify({id: this.selectedFile.id, new_name: newName})}).then(() => this.loadFiles());
@@ -435,22 +459,16 @@ const App = {
                     }
                 } 
                 else if (this.selectedFolderId) {
-                    const folderMeta = this.files.find(f => f.group_id === this.selectedFolderId);
-                    const currentName = folderMeta ? (folderMeta.group_name || `Dossier`) : 'Dossier';
-                    const currentColor = folderMeta ? (folderMeta.group_color || '#3b82f6') : '#3b82f6';
-
+                    const fMeta = this.files.find(f => f.group_id === this.selectedFolderId);
+                    const name = fMeta ? (fMeta.group_name || 'Dossier') : 'Dossier';
+                    const color = fMeta ? (fMeta.group_color || '#3b82f6') : '#3b82f6';
                     switch(action) {
-                        case 'rename': this.openFolderSettings(this.selectedFolderId, currentName, currentColor); break;
-                        case 'delete':
-                            if(confirm('Supprimer ce dossier et tout son contenu ?')) await this.deleteFile(this.selectedFolderId, 'group');
-                            break;
-                        case 'download':
-                            window.open(`${API_URL}?action=download_folder&group_id=${this.selectedFolderId}`, '_blank');
-                            break;
+                        case 'rename': this.openFolderSettings(this.selectedFolderId, name, color); break;
+                        case 'delete': if(confirm('Supprimer ce dossier ?')) await this.deleteFile(this.selectedFolderId, 'group'); break;
+                        case 'download': window.open(`${API_URL}?action=download_folder&group_id=${this.selectedFolderId}`, '_blank'); break;
                     }
                 }
-                this.selectedFile = null;
-                this.selectedFolderId = null;
+                this.selectedFile = null; this.selectedFolderId = null;
             });
         });
     },
@@ -458,178 +476,26 @@ const App = {
     showContextMenu(e, itemId, type) {
         e.preventDefault();
         const menu = document.getElementById('context-menu');
-        this.selectedFile = null;
-        this.selectedFolderId = null;
-
-        if (type === 'file') {
-            this.selectedFile = this.files.find(f => f.id === itemId);
-        } else {
-            this.selectedFolderId = itemId;
-        }
-
-        let x = e.pageX;
-        let y = e.pageY;
-        if(x + 200 > window.innerWidth) x = window.innerWidth - 210;
+        this.selectedFile = null; this.selectedFolderId = null;
+        if (type === 'file') this.selectedFile = this.files.find(f => f.id === itemId);
+        else this.selectedFolderId = itemId;
         
-        menu.style.left = `${x}px`;
-        menu.style.top = `${y}px`;
+        let x = e.pageX; let y = e.pageY;
+        if(x + 200 > window.innerWidth) x = window.innerWidth - 210;
+        menu.style.left = `${x}px`; menu.style.top = `${y}px`;
         menu.classList.add('active');
     },
 
-    // --- ACTIONS : DELETE / RESTORE / MOVE ---
-    async deleteFile(id, type) { 
-        await this.apiRequest('delete', { method: 'POST', body: JSON.stringify({ id: id, type: type }) }); 
-        this.loadFiles();
-    },
-
-    async deleteSelected() {
-        if (this.selectedItems.size === 0) return;
-        if (!confirm(`Voulez-vous vraiment supprimer ${this.selectedItems.size} fichier(s) ?`)) return;
-
-        const promises = Array.from(this.selectedItems).map(id => 
-            this.apiRequest('delete', { method: 'POST', body: JSON.stringify({ id: id, type: 'file' }) })
-        );
-
-        await Promise.all(promises);
-        this.showToast("Éléments supprimés");
-        this.clearSelection();
-        this.loadFiles();
-    },
-
-    async restoreItem(id) {
-        if(!confirm("Restaurer cet élément ?")) return;
-        try {
-            const res = await fetch(`${API_URL}?action=restore`, {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${this.token}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: id })
-            });
-            const data = await res.json();
-            if (data.success) {
-                this.showToast("Restauré avec succès");
-                this.loadTrash();
-            } else {
-                this.showToast(data.error || "Erreur", "error");
-            }
-        } catch (e) { this.showToast("Erreur serveur", "error"); }
-    },
-
-    openMoveModal() {
-        if (this.selectedItems.size === 0) return;
-        const folders = new Set();
-        this.files.forEach(f => { if (f.group_id) folders.add(f.group_id); });
-
-        let folderOptions = `<div class="folder-option" onclick="App.confirmMove('root')"><i class="fas fa-home"></i> Racine</div>`;
-
-        folders.forEach(groupId => {
-            if (groupId !== this.currentFolder) {
-                const fMeta = this.files.find(f => f.group_id === groupId);
-                const name = fMeta ? (fMeta.group_name || groupId.substring(0,8)) : groupId;
-                folderOptions += `<div class="folder-option" onclick="App.confirmMove('${groupId}')"><i class="fas fa-folder"></i> ${name}</div>`;
-            }
-        });
-
-        const old = document.getElementById('move-modal');
-        if(old) old.remove();
-
-        const modalHTML = `
-        <div id="move-modal" class="modal active">
-            <div class="modal-content">
-                <div class="modal-header"><h3>Déplacer vers...</h3><button class="close-btn" onclick="document.getElementById('move-modal').remove()">&times;</button></div>
-                <div class="modal-body" style="max-height:300px;overflow-y:auto;">${folderOptions}</div>
-            </div>
-        </div>`;
-        document.body.insertAdjacentHTML('beforeend', modalHTML);
-    },
-
-    async confirmMove(targetGroupId) {
-        document.getElementById('move-modal').remove();
-        try {
-            const res = await fetch(`${API_URL}?action=move`, {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${this.token}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    ids: Array.from(this.selectedItems),
-                    target_group_id: targetGroupId
-                })
-            });
-            const data = await res.json();
-            if (data.success) {
-                this.showToast("Déplacé avec succès");
-                this.clearSelection();
-                this.loadFiles();
-            } else { this.showToast(data.error || "Erreur", "error"); }
-        } catch(e) { console.error(e); }
-    },
-
-    // --- UPLOAD & DOSSIER CREATE ---
-    createFolder() {
-        const name = document.getElementById('folder-name').value.trim();
-        if(name) {
-            // Création dossier virtuel : on crée un groupe sans fichiers au début
-            // L'API actuelle crée les groupes à l'upload. 
-            // Pour créer un dossier vide, il faudrait une action API dédiée ou on change juste le currentFolder
-            // Astuce : on utilise currentFolder comme ID généré, le dossier sera "réel" au premier upload
-            this.currentFolder = this.generateUUID();
-            // Optionnel : Sauvegarder le nom immédiatement si API supporte
-            // Ici on simule en mettant à jour le titre, mais sans fichier il ne s'affichera pas au refresh
-            this.loadFiles(); 
-            document.getElementById('folder-modal').classList.remove('active');
-            document.getElementById('folder-name').value = '';
-            this.showToast("Dossier prêt. Ajoutez des fichiers.");
-        }
-    },
-
-    async handleUpload() {
-        const fileInput = document.getElementById('file-input');
-        const files = fileInput.files;
-        if (files.length === 0) return;
-
-        const groupId = this.currentFolder || this.generateUUID();
-        const confirmBtn = document.getElementById('confirm-upload');
-        confirmBtn.textContent = "Envoi...";
-        confirmBtn.disabled = true;
-
-        let successCount = 0;
-        for (let i = 0; i < files.length; i++) {
-            const formData = new FormData();
-            formData.append('file', files[i]);
-            formData.append('group_id', groupId);
-            const pwdCheck = document.getElementById('password-check');
-            const pwdInput = document.getElementById('file-password');
-            if(pwdCheck && pwdCheck.checked && pwdInput.value) formData.append('password', pwdInput.value);
-
-            try {
-                const res = await fetch(`${API_URL}?action=upload`, {
-                    method: 'POST', headers: { 'Authorization': `Bearer ${this.token}` }, body: formData
-                });
-                const data = await res.json();
-                if(data.success) successCount++;
-            } catch(e) { console.error(e); }
-        }
-
-        confirmBtn.textContent = "Upload";
-        confirmBtn.disabled = false;
-        document.getElementById('upload-modal').classList.remove('active');
-        fileInput.value = '';
-
-        if (successCount > 0) {
-            this.showToast(`${successCount} fichier(s) envoyé(s)`);
-            this.loadFiles();
-        } else {
-            this.showToast("Erreur lors de l'upload", "error");
-        }
-    },
-
-    // --- NAVIGATION & SÉCURITÉ ---
+    // --- NAVIGATION & SÉCURITÉ (MODALE) ---
     async enterFolder(groupId, isLocked) {
         if (isLocked) {
-            const password = prompt("Dossier protégé. Mot de passe :");
-            if (password === null) return; 
+            const pass = await this.askPassword("Ce dossier est protégé. Mot de passe :");
+            if (!pass) return; 
+
             try {
                 const res = await fetch(`${API_URL}?action=check_group_password`, {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ group_id: groupId, password: password })
+                    body: JSON.stringify({ group_id: groupId, password: pass })
                 });
                 const data = await res.json();
                 if (!data.success) { this.showToast("Mot de passe incorrect", "error"); return; }
@@ -639,161 +505,231 @@ const App = {
         this.loadFiles();
     },
 
-    updateBreadcrumb() {
-        const bc = document.querySelector('.breadcrumb');
-        if(!bc) return;
-        if (this.currentFolder) {
-            bc.innerHTML = `<span class="breadcrumb-item" onclick="App.currentFolder=null; App.loadFiles()" style="cursor:pointer; color: #3b82f6;"><i class="fas fa-home"></i> Accueil</span> <span style="margin:0 5px;">/</span> <span class="breadcrumb-item active">Dossier</span>`;
-        } else {
-            bc.innerHTML = `<span class="breadcrumb-item active"><i class="fas fa-home"></i> Accueil</span>`;
+    // --- MODALE MOT DE PASSE (PROMISE) ---
+    askPassword(title) {
+        return new Promise(resolve => {
+            if(!document.getElementById('password-prompt-modal')) {
+                const html = `
+                <div id="password-prompt-modal" class="modal">
+                    <div class="modal-content">
+                        <div class="modal-header"><h3 id="pwd-modal-title">Sécurité</h3><button class="close-btn">&times;</button></div>
+                        <div class="modal-body"><input type="password" id="pwd-modal-input" class="input-field" placeholder="Entrez le mot de passe" autofocus></div>
+                        <div class="modal-footer"><button class="btn btn-secondary close-modal-btn">Annuler</button><button class="btn btn-primary" id="pwd-modal-confirm">Valider</button></div>
+                    </div>
+                </div>`;
+                document.body.insertAdjacentHTML('beforeend', html);
+            }
+            const modal = document.getElementById('password-prompt-modal');
+            const input = document.getElementById('pwd-modal-input');
+            const confirm = document.getElementById('pwd-modal-confirm');
+            const closers = modal.querySelectorAll('.close-btn, .close-modal-btn');
+
+            document.getElementById('pwd-modal-title').textContent = title;
+            input.value = '';
+            modal.classList.add('active');
+            input.focus();
+
+            const cleanup = () => {
+                modal.classList.remove('active');
+                confirm.onclick = null;
+                closers.forEach(b => b.onclick = null);
+                input.onkeyup = null;
+            };
+
+            confirm.onclick = () => { if(input.value) { resolve(input.value); cleanup(); } };
+            closers.forEach(b => b.onclick = () => { resolve(null); cleanup(); });
+            input.onkeyup = (e) => { if(e.key === 'Enter') confirm.click(); };
+        });
+    },
+
+    // --- TÉLÉCHARGEMENT ---
+    async downloadFileWithAuth(fileId, hasPass) {
+        let pass = '';
+        if (hasPass == 1) { 
+            pass = await this.askPassword("Mot de passe du fichier :"); 
+            if(!pass) return; 
+        }
+        const url = `${API_URL}?action=download&id=${fileId}&password=${encodeURIComponent(pass)}`;
+        this.copyLink(url); 
+        window.open(url, '_blank');
+    },
+
+    // --- CRÉATION DOSSIER ---
+    createFolder() {
+        const name = document.getElementById('folder-name').value.trim();
+        if(name) {
+            this.currentFolder = this.generateUUID();
+            // Création immédiate pour sauvegarder le nom
+            this.apiRequest('update_group', {
+                method: 'POST',
+                body: JSON.stringify({ id: this.currentFolder, name: name, color: '#3b82f6' })
+            }).then(() => {
+                this.loadFiles();
+                document.getElementById('folder-modal').classList.remove('active');
+                document.getElementById('folder-name').value = '';
+                this.showToast(`Dossier "${name}" créé`);
+            });
         }
     },
 
-    // --- PARAMÈTRES DOSSIER ---
     openFolderSettings(groupId, currentName, currentColor) {
         this.editingGroupId = groupId;
         if (!document.getElementById('folder-settings-modal')) {
-            const modalHtml = `
-            <div id="folder-settings-modal" class="modal">
-                <div class="modal-content">
-                    <div class="modal-header"><h3>Modifier le dossier</h3><button class="close-btn" onclick="document.getElementById('folder-settings-modal').classList.remove('active')">&times;</button></div>
-                    <div class="modal-body">
-                        <div class="input-group"><label>Nom</label><input type="text" id="edit-folder-name" class="input-field"></div>
-                        <div class="input-group"><label>Couleur</label><input type="color" id="edit-folder-color" class="input-field" style="height:40px;width:100%"></div>
-                        <div class="input-group"><label>Mot de passe</label><input type="password" id="edit-folder-pass" class="input-field" placeholder="Nouveau mot de passe (vide = pas de changement)"></div>
-                    </div>
-                    <div class="modal-footer"><button class="btn btn-secondary close-modal-btn" onclick="document.getElementById('folder-settings-modal').classList.remove('active')">Annuler</button><button class="btn btn-primary" id="save-folder-settings">Enregistrer</button></div>
-                </div>
-            </div>`;
-            document.body.insertAdjacentHTML('beforeend', modalHtml);
-            document.getElementById('save-folder-settings').onclick = () => this.saveFolderSettings();
+            const html = `
+            <div id="folder-settings-modal" class="modal"><div class="modal-content"><div class="modal-header"><h3>Paramètres</h3><button class="close-btn" onclick="document.getElementById('folder-settings-modal').classList.remove('active')">&times;</button></div><div class="modal-body"><div class="input-group"><label>Nom</label><input type="text" id="edit-folder-name" class="input-field"></div><div class="input-group"><label>Couleur</label><input type="color" id="edit-folder-color" class="input-field" style="height:40px;width:100%"></div><div class="input-group"><label>Mot de passe</label><input type="password" id="edit-folder-pass" class="input-field" placeholder="Nouveau mot de passe"></div></div><div class="modal-footer"><button class="btn btn-secondary" onclick="document.getElementById('folder-settings-modal').classList.remove('active')">Annuler</button><button class="btn btn-primary" id="save-settings-btn">Sauvegarder</button></div></div></div>`;
+            document.body.insertAdjacentHTML('beforeend', html);
+            document.getElementById('save-settings-btn').onclick = () => this.saveFolderSettings();
         }
         document.getElementById('edit-folder-name').value = currentName;
         document.getElementById('edit-folder-color').value = currentColor;
-        document.getElementById('edit-folder-pass').value = ''; 
+        document.getElementById('edit-folder-pass').value = '';
         document.getElementById('folder-settings-modal').classList.add('active');
     },
 
     async saveFolderSettings() {
         const name = document.getElementById('edit-folder-name').value;
         const color = document.getElementById('edit-folder-color').value;
-        const password = document.getElementById('edit-folder-pass').value;
+        const pass = document.getElementById('edit-folder-pass').value;
         try {
             const res = await fetch(`${API_URL}?action=update_group`, {
-                method: 'POST', headers: { 'Authorization': `Bearer ${this.token}`, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: this.editingGroupId, name: name, color: color, password: password })
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${this.token}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: this.editingGroupId, name: name, color: color, password: pass })
             });
             const data = await res.json();
             if (data.success) {
                 document.getElementById('folder-settings-modal').classList.remove('active');
-                this.showToast('Dossier mis à jour');
-                this.loadFiles(); 
-            } else { alert(data.error || "Erreur mise à jour"); }
+                this.showToast('Mis à jour');
+                this.loadFiles();
+            } else { alert(data.error); }
         } catch (e) { this.showToast("Erreur serveur", "error"); }
     },
 
-    // --- OUTILS ---
-    async apiRequest(endpoint, options = {}) {
-        const url = `${API_URL}?action=${endpoint}`;
-        const headers = { 'Authorization': `Bearer ${this.token}`, 'Content-Type': 'application/json', ...options.headers };
-        if (options.body instanceof FormData) delete headers['Content-Type'];
-        try {
-            const response = await fetch(url, { ...options, headers });
-            return await response.json();
-        } catch (error) { console.error(error); return { success: false, error: 'Erreur réseau' }; }
-    },
-
-    async downloadFile(file) {
-        let password = '';
-        if (file.has_password == 1) { password = prompt("Mot de passe fichier :"); if (!password) return; }
-        const url = `${API_URL}?action=download&id=${file.id}&password=${encodeURIComponent(password)}`;
-        this.copyLink(url); 
-        window.open(url, '_blank');
-    },
-
-    copyLink(url) {
-        navigator.clipboard.writeText(url).then(() => this.showToast("Lien copié !"))
-        .catch(() => prompt("Copiez le lien :", url));
-    },
-
-    handleSearch(e) {
-        const term = e.target.value.toLowerCase();
-        document.querySelectorAll('.file-item').forEach(el => {
-            const name = el.querySelector('.file-name').textContent.toLowerCase();
-            el.style.display = name.includes(term) ? 'flex' : 'none';
-        });
-    },
-
-    showMetadata(item, type) { alert(`Nom : ${item.name}\nTaille : ${this.formatFileSize(item.size)}`); },
-
-    setupDragAndDrop() {
-        const dropZone = document.getElementById('drop-zone');
-        const main = document.querySelector('.main-content');
-        if(!main || !dropZone) return;
-        ['dragenter', 'dragover'].forEach(e => main.addEventListener(e, (evt) => { evt.preventDefault(); dropZone.classList.add('active'); }));
-        ['dragleave', 'drop'].forEach(e => main.addEventListener(e, (evt) => { evt.preventDefault(); dropZone.classList.remove('active'); }));
-        main.addEventListener('drop', (e) => {
-            if (e.dataTransfer.files.length > 0) {
-                document.getElementById('file-input').files = e.dataTransfer.files;
-                document.getElementById('upload-modal').classList.add('active');
-            }
-        });
-    },
-
-    showToast(message, type = 'success') {
-        let toast = document.getElementById('toast');
-        if (!toast) {
-            toast = document.createElement('div');
-            toast.id = 'toast';
-            toast.className = 'toast';
-            document.body.appendChild(toast);
+    // --- UPLOAD & HELPERS ---
+    async handleUpload() {
+        const files = document.getElementById('file-input').files;
+        if (!files.length) return;
+        const gid = this.currentFolder || this.generateUUID();
+        const btn = document.getElementById('confirm-upload');
+        btn.disabled = true; btn.textContent = "Envoi...";
+        
+        let successCount = 0;
+        for (let i = 0; i < files.length; i++) {
+            const fd = new FormData();
+            fd.append('file', files[i]); fd.append('group_id', gid);
+            if(document.getElementById('password-check').checked) fd.append('password', document.getElementById('file-password').value);
+            
+            try {
+                const res = await fetch(`${API_URL}?action=upload`, { method: 'POST', headers: { 'Authorization': `Bearer ${this.token}` }, body: fd });
+                const d = await res.json();
+                if(d.success) successCount++;
+            } catch(e) {}
         }
-        toast.textContent = message;
-        toast.style.backgroundColor = type === 'error' ? '#dc3545' : '#333';
-        toast.classList.add('active');
-        setTimeout(() => toast.classList.remove('active'), 3000);
+        btn.disabled = false; btn.textContent = "Upload";
+        document.getElementById('upload-modal').classList.remove('active');
+        fileInput.value = '';
+        if (successCount > 0) { this.showToast("Fichiers envoyés"); this.loadFiles(); }
     },
 
-    getFileIcon(filename) {
-        if (!filename) return 'fa-file';
-        const ext = filename.split('.').pop().toLowerCase();
-        const icons = { 'pdf': 'fa-file-pdf', 'doc': 'fa-file-word', 'docx': 'fa-file-word', 'xls': 'fa-file-excel', 'jpg': 'fa-file-image', 'png': 'fa-file-image', 'zip': 'fa-file-archive', 'mp4': 'fa-file-video' };
-        return icons[ext] || 'fa-file';
+    async deleteFile(id, type) { 
+        await this.apiRequest('delete', { method: 'POST', body: JSON.stringify({ id, type }) }); 
+        this.currentView === 'trash' ? this.loadTrash() : this.loadFiles();
     },
-
-    formatFileSize(bytes) {
-        if (bytes === 0) return '0 B';
-        const k = 1024; const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + ['B', 'KB', 'MB', 'GB'][i];
+    async deleteSelected() {
+        if (!this.selectedItems.size || !confirm("Supprimer la sélection ?")) return;
+        const promises = Array.from(this.selectedItems).map(id => this.apiRequest('delete', { method: 'POST', body: JSON.stringify({ id: id, type: 'file' }) }));
+        await Promise.all(promises);
+        this.clearSelection(); this.loadFiles();
     },
-
+    async restoreItem(id) {
+        if(!confirm("Restaurer ?")) return;
+        await this.apiRequest('restore', { method: 'POST', body: JSON.stringify({ id }) });
+        this.loadTrash();
+    },
+    openMoveModal() {
+        if (!this.selectedItems.size) return;
+        const folders = new Set(); this.files.forEach(f => { if(f.group_id) folders.add(f.group_id); });
+        let html = `<div class="folder-option" onclick="App.confirmMove('root')"><i class="fas fa-home"></i> Racine</div>`;
+        folders.forEach(gid => { if(gid!==this.currentFolder) {
+            const fm = this.files.find(x => x.group_id === gid);
+            html += `<div class="folder-option" onclick="App.confirmMove('${gid}')"><i class="fas fa-folder"></i> ${fm?fm.group_name:gid.substring(0,8)}</div>`; 
+        }});
+        const old = document.getElementById('move-modal'); if(old) old.remove();
+        document.body.insertAdjacentHTML('beforeend', `<div id="move-modal" class="modal active"><div class="modal-content"><div class="modal-header"><h3>Déplacer</h3><button class="close-btn" onclick="document.getElementById('move-modal').remove()">&times;</button></div><div class="modal-body" style="max-height:300px;overflow-y:auto">${html}</div></div></div>`);
+    },
+    async confirmMove(tg) {
+        document.getElementById('move-modal').remove();
+        await this.apiRequest('move', { method: 'POST', body: JSON.stringify({ ids: Array.from(this.selectedItems), target_group_id: tg }) });
+        this.clearSelection(); this.loadFiles();
+    },
+    async apiRequest(ep, opts={}) {
+        const h = { 'Authorization': `Bearer ${this.token}`, 'Content-Type': 'application/json', ...opts.headers };
+        if (opts.body instanceof FormData) delete h['Content-Type'];
+        try { const r = await fetch(`${API_URL}?action=${ep}`, { ...opts, headers: h }); return await r.json(); } catch (e) { return { success: false, error: 'Erreur réseau' }; }
+    },
+    copyLink(url) { navigator.clipboard.writeText(url).then(()=>this.showToast("Lien copié")).catch(()=>prompt("Lien:",url)); },
+    updateBreadcrumb() {
+        const bc = document.querySelector('.breadcrumb');
+        if(this.currentFolder) bc.innerHTML = `<span onclick="App.currentFolder=null;App.loadFiles()" style="cursor:pointer;color:blue">Accueil</span> / Dossier`;
+        else bc.innerHTML = `Accueil`;
+    },
+    handleSearch(e) {
+        const v = e.target.value.toLowerCase();
+        document.querySelectorAll('.file-item').forEach(el => el.style.display = el.innerText.toLowerCase().includes(v) ? 'flex' : 'none');
+    },
+    toggleSelection(id) { this.selectedItems.has(id) ? this.selectedItems.delete(id) : this.selectedItems.add(id); this.renderFiles(); },
+    clearSelection() { this.selectedItems.clear(); this.renderFiles(); },
+    updateSelectionToolbar() {
+        let bar = document.getElementById('selection-toolbar');
+        if (!bar) {
+            bar = document.createElement('div'); bar.id = 'selection-toolbar'; bar.className = 'selection-toolbar';
+            bar.innerHTML = `<div class="toolbar-left"><span id="sel-cnt" style="font-weight:bold;margin-right:15px">0</span><button class="btn btn-secondary btn-sm" onclick="App.clearSelection()">Annuler</button></div><div class="toolbar-right" style="gap:10px;display:flex"><button class="btn btn-primary" onclick="App.openMoveModal()">Déplacer</button><button class="btn btn-danger" style="background:#dc3545;border:none;color:white" onclick="App.deleteSelected()">Supprimer</button></div>`;
+            const tb = document.querySelector('.toolbar'); if(tb) tb.parentNode.insertBefore(bar, tb.nextSibling);
+        }
+        const c = this.selectedItems.size;
+        bar.style.display = c > 0 ? 'flex' : 'none';
+        if(c>0) document.getElementById('sel-cnt').textContent = `${c} élément(s)`;
+    },
+    setupDragAndDrop() {
+        const dz = document.getElementById('drop-zone');
+        const m = document.querySelector('.main-content');
+        if(m && dz) {
+            ['dragenter','dragover'].forEach(e => m.addEventListener(e, (ev) => { ev.preventDefault(); dz.classList.add('active'); }));
+            ['dragleave','drop'].forEach(e => m.addEventListener(e, (ev) => { ev.preventDefault(); dz.classList.remove('active'); }));
+            m.addEventListener('drop', (e) => { if(e.dataTransfer.files.length){ document.getElementById('file-input').files = e.dataTransfer.files; document.getElementById('upload-modal').classList.add('active'); }});
+        }
+    },
+    showToast(msg, type='success') {
+        let t = document.getElementById('toast');
+        if(!t) { t = document.createElement('div'); t.id='toast'; t.className='toast'; document.body.appendChild(t); }
+        t.textContent = msg; t.style.background = type==='error'?'#dc3545':'#333';
+        t.classList.add('active'); setTimeout(()=>t.classList.remove('active'), 3000);
+    },
+    showMetadata(i) { alert(`Nom : ${i.name}\nTaille : ${this.formatFileSize(i.size)}`); },
+    getFileIcon(n) { const x = n.split('.').pop().toLowerCase(); return ({'pdf':'fa-file-pdf','jpg':'fa-file-image'}[x] || 'fa-file'); },
+    formatFileSize(b) { if(!b) return '0 B'; const i=Math.floor(Math.log(b)/Math.log(1024)); return (b/Math.pow(1024,i)).toFixed(2)+' '+['B','KB','MB','GB'][i]; },
     generateUUID() { return crypto.randomUUID(); }
 };
 
 // Styles dynamiques
 const styleSheet = document.createElement("style");
 styleSheet.innerText = `
-    .file-item { position: relative; }
-    .file-item.selected { border-color: #007bff; background-color: #e3f2fd; }
-    .selection-checkbox {
-        position: absolute; top: 10px; left: 10px; width: 20px; height: 20px;
-        border: 2px solid #ccc; border-radius: 4px; background: white;
-        display: flex; align-items: center; justify-content: center;
-        cursor: pointer; opacity: 0; transition: opacity 0.2s; z-index: 10;
-    }
-    .file-item:hover .selection-checkbox, .file-item.selected .selection-checkbox { opacity: 1; }
-    .selection-checkbox.checked { background-color: #007bff; border-color: #007bff; color: white; }
-    .folder-item { position: relative; }
-    .btn-settings { background: rgba(255,255,255,0.9); border: 1px solid #ddd; padding: 5px 8px; border-radius: 50%; cursor: pointer; color: #666; display: none; }
-    .folder-item:hover .btn-settings { display: block; }
-    .btn-settings:hover { transform: scale(1.1); color: #000; background: white; }
-    .btn-copy { font-size: 12px; padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px; background: #f8f9fa; cursor: pointer; }
-    .btn-copy:hover { background: #e2e6ea; }
-    .file-actions { opacity: 0; transition: opacity 0.2s; }
-    .file-item:hover .file-actions { opacity: 1; }
-    .selection-toolbar { display:none; justify-content: space-between; padding: 10px 20px; background: #e3f2fd; border-bottom: 1px solid #ddd; }
-    .folder-option { padding: 10px; border-bottom: 1px solid #eee; cursor: pointer; display: flex; align-items: center; gap: 10px; }
-    .folder-option:hover { background: #f5f5f5; }
+.folder-item { position: relative; }
+.btn-settings { background: rgba(255,255,255,0.9); border: 1px solid #ddd; padding: 5px 8px; border-radius: 50%; cursor: pointer; color: #666; display: none; }
+.folder-item:hover .btn-settings { display: block; }
+.btn-settings:hover { transform: scale(1.1); color: #000; background: white; }
+.btn-copy { font-size: 12px; padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px; background: #f8f9fa; cursor: pointer; }
+.btn-copy:hover { background: #e2e6ea; }
+.file-actions { opacity: 0; transition: opacity 0.2s; }
+.file-item:hover .file-actions { opacity: 1; }
+.selection-checkbox { position: absolute; top: 10px; left: 10px; width: 20px; height: 20px; border: 2px solid #ccc; border-radius: 4px; background: white; display: flex; align-items: center; justify-content: center; cursor: pointer; opacity: 0; transition: opacity 0.2s; z-index: 10; }
+.file-item:hover .selection-checkbox, .file-item.selected .selection-checkbox { opacity: 1; }
+.selection-checkbox.checked { background-color: #007bff; border-color: #007bff; color: white; }
+.file-item.selected { border-color: #007bff; background-color: #e3f2fd; }
+.selection-toolbar { display:none; justify-content: space-between; padding: 10px 20px; background: #e3f2fd; border-bottom: 1px solid #ddd; }
+.folder-option { padding: 10px; border-bottom: 1px solid #eee; cursor: pointer; display: flex; align-items: center; gap: 10px; }
+.folder-option:hover { background: #f5f5f5; }
+.input-group { margin-bottom: 15px; } .input-group label { display: block; margin-bottom: 5px; font-size: 14px; font-weight: 500; }
 `;
 document.head.appendChild(styleSheet);
 
