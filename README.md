@@ -1,7 +1,3 @@
-Voici une proposition de fichier `README.md` complet, structuré et professionnel, mettant en valeur toutes les fonctionnalités découvertes dans votre code source.
-
------
-
 # ☁️ Byflash Drive
 
 **Byflash Drive** est une application web de gestion de fichiers moderne, rapide et sécurisée. Conçue comme une **Progressive Web App (PWA)**, elle offre une expérience utilisateur fluide similaire à une application native, permettant de stocker, organiser et protéger vos documents numériques.
