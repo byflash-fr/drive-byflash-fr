@@ -1,74 +1,74 @@
 # ☁️ Byflash Drive
 
-**Byflash Drive** est une application web de gestion de fichiers moderne, rapide et sécurisée. Conçue comme une **Progressive Web App (PWA)**, elle offre une expérience utilisateur fluide similaire à une application native, permettant de stocker, organiser et protéger vos documents numériques.
+**Byflash Drive** is a modern, fast, and secure web-based file management application. Designed as a **Progressive Web App (PWA)**, it offers a smooth user experience similar to a native application, allowing you to store, organize, and protect your digital documents.
 
-## ✨ Fonctionnalités Principales
+## ✨ Key Features
 
-### 🔐 Authentification & Sécurité
+### 🔐 Authentication & Security
 
-  * **Connexion sécurisée :** Système d'authentification par email et mot de passe via l'API Byflash.
-  * **Protection par mot de passe :**
-      * **Dossiers :** Possibilité de verrouiller l'accès à des dossiers spécifiques par un mot de passe.
-      * **Fichiers :** Option pour protéger le téléchargement de fichiers sensibles par mot de passe lors de l'upload.
-  * **Déconnexion :** Gestion de session sécurisée avec suppression des tokens locaux.
+  * **Secure Login:** Authentication system via email and password through the Byflash API.
+  * **Password Protection:**
+      * **Folders:** Ability to lock access to specific folders with a password.
+      * **Files:** Option to protect the download of sensitive files with a password during upload.
+  * **Logout:** Secure session management with local token removal.
 
-### 📂 Gestion de Fichiers Avancée
+### 📂 Advanced File Management
 
-  * **Upload intuitif :**
-      * Bouton d'upload classique.
-      * **Drag & Drop :** Glisser-déposer de fichiers directement dans l'interface.
-  * **Opérations sur les fichiers :**
-      * Téléchargement (sécurisé ou public).
-      * Renommage de fichiers et dossiers.
-      * Déplacement de fichiers vers d'autres dossiers.
-      * Suppression (envoi vers la corbeille).
-  * **Gestion des dossiers :** Création de nouveaux dossiers et navigation fluide (fil d'Ariane / Breadcrumb).
-  * **Corbeille :** Système de récupération des fichiers supprimés avec option de restauration.
+  * **Intuitive Upload:**
+      * Classic upload button.
+      * **Drag & Drop:** Drag and drop files directly into the interface.
+  * **File Operations:**
+      * Download (secure or public).
+      * Rename files and folders.
+      * Move files to other folders.
+      * Delete (send to trash).
+  * **Folder Management:** Create new folders and smooth navigation (Breadcrumb trail).
+  * **Trash:** Recovery system for deleted files with a restore option.
 
-### 🖥️ Interface Utilisateur & Expérience (UI/UX)
+### 🖥️ User Interface & Experience (UI/UX)
 
-  * **Vues multiples :**
-      * **Vue Grille :** Affichage visuel avec icônes adaptées au type de fichier (PDF, Word, Image, Vidéo, etc.).
-      * **Vue Liste :** Affichage détaillé avec tri possible par Nom, Taille ou Date.
-  * **Menu Contextuel :** Clic-droit personnalisé sur les fichiers et dossiers pour un accès rapide aux actions (Télécharger, Renommer, Infos, Supprimer).
-  * **Recherche :** Barre de recherche en temps réel pour filtrer les éléments affichés.
-  * **Sélection multiple :** Possibilité de sélectionner plusieurs fichiers (via Ctrl/Cmd ou cases à cocher) pour des actions groupées (suppression, déplacement).
-  * **Métadonnées :** Visualisation détaillée des informations du fichier (Taille, Date, Nombre de téléchargements, Statut de protection).
+  * **Multiple Views:**
+      * **Grid View:** Visual display with icons adapted to the file type (PDF, Word, Image, Video, etc.).
+      * **List View:** Detailed display with sorting capabilities by Name, Size, or Date.
+  * **Context Menu:** Custom right-click menu on files and folders for quick access to actions (Download, Rename, Info, Delete).
+  * **Search:** Real-time search bar to filter displayed items.
+  * **Multi-selection:** Ability to select multiple files (via Ctrl/Cmd or checkboxes) for bulk actions (deletion, moving).
+  * **Metadata:** Detailed visualization of file information (Size, Date, Download count, Protection status).
 
-### 📱 Accessibilité & Technologie
+### 📱 Accessibility & Technology
 
-  * **Responsive Design :** Interface adaptative fonctionnant sur ordinateur, tablette et mobile (avec barre latérale rétractable).
-  * **PWA (Progressive Web App) :**
-      * Installable sur le bureau ou l'écran d'accueil mobile.
-      * Utilisation d'un Service Worker pour la gestion du cache et les performances.
-  * **Feedback utilisateur :** Notifications "Toast" pour confirmer les actions et indicateurs de chargement (Spinner).
+  * **Responsive Design:** Adaptive interface working on desktop, tablet, and mobile (with collapsible sidebar).
+  * **PWA (Progressive Web App):**
+      * Installable on desktop or mobile home screen.
+      * Uses a Service Worker for cache management and performance.
+  * **User Feedback:** "Toast" notifications to confirm actions and loading indicators (Spinner).
 
-## 🛠️ Stack Technique
+## 🛠️ Tech Stack
 
-  * **Frontend :** HTML5, CSS3 (Variables CSS, Flexbox/Grid), JavaScript (ES6+, Vanilla JS).
-  * **API :** Connexion à une API REST PHP (`api.byflash.fr`).
-  * **Icônes :** FontAwesome.
-  * **Architecture :** Single Page Application (SPA) légère.
+  * **Frontend:** HTML5, CSS3 (CSS Variables, Flexbox/Grid), JavaScript (ES6+, Vanilla JS).
+  * **API:** Connection to a REST PHP API (`api.byflash.fr`).
+  * **Icons:** FontAwesome.
+  * **Architecture:** Lightweight Single Page Application (SPA).
 
-## 🚀 Installation et Utilisation
+## 🚀 Installation and Usage
 
-Puisque l'application est une SPA statique (le backend est distant), l'installation est très simple.
+Since the application is a static SPA (the backend is remote), installation is very simple.
 
-1.  **Cloner le dépôt :**
+1.  **Clone the repository:**
 
     ```bash
-    git clone https://github.com/votre-username/byflash-drive.git
+    git clone https://github.com/your-username/byflash-drive.git
     ```
 
-2.  **Lancer l'application :**
-    Ouvrez simplement le fichier `index.html` dans votre navigateur ou servez le dossier via un serveur local (ex: Live Server sur VS Code, Apache, Nginx).
+2.  **Launch the application:**
+    Simply open the `index.html` file in your browser or serve the folder via a local server (e.g., Live Server on VS Code, Apache, Nginx).
 
-3.  **Configuration PWA (Optionnel) :**
-    Pour que la PWA fonctionne pleinement (installation), le site doit être servi via **HTTPS** (ou `localhost`). Assurez-vous que le fichier `sw.js` est accessible à la racine.
+3.  **PWA Configuration (Optional):**
+    For the PWA to fully function (installation), the site must be served via **HTTPS** (or `localhost`). Ensure the `sw.js` file is accessible at the root.
 
-## 📄 Licence
+## 📄 License
 
-Ce projet est sous licence **MIT**. Voir le fichier [LICENSE.txt](https://www.google.com/search?q=LICENSE.txt) pour plus de détails.
+This project is licensed under the **MIT License**. See the [LICENSE.txt](https://www.google.com/search?q=LICENSE.txt) file for details.
 
 -----
 
