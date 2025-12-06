@@ -696,3 +696,282 @@ input[type="color"]::-webkit-color-swatch {
     border: none;
     border-radius: 4px;
 }
+
+/* Ajoutez ces styles à votre styles.css */
+
+/* En-tête de la liste */
+.list-header {
+    display: none;
+    padding: 10px 30px;
+    background: #f8f9fa;
+    border-bottom: 2px solid #ddd;
+    font-weight: 600;
+    color: #555;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.list-header-content {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-left: 30px; /* Pour l'espace de la checkbox */
+}
+
+.list-header-checkbox {
+    width: 30px;
+}
+
+.sort-header {
+    cursor: pointer;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 10px;
+    border-radius: 4px;
+    transition: background 0.2s;
+}
+
+.sort-header:hover {
+    background: rgba(0, 0, 0, 0.05);
+}
+
+.sort-icon {
+    font-size: 12px;
+    opacity: 0.3;
+    transition: opacity 0.2s;
+}
+
+.sort-header:hover .sort-icon {
+    opacity: 0.6;
+}
+
+/* Vue liste - Structure */
+.file-list {
+    display: flex !important;
+    flex-direction: column;
+    gap: 0 !important;
+    padding: 0 30px !important;
+}
+
+.file-list + .list-header {
+    display: block;
+}
+
+.file-list .file-item {
+    flex-direction: row !important;
+    padding: 12px 0 !important;
+    border-radius: 0 !important;
+    border: none !important;
+    border-bottom: 1px solid #eee !important;
+    text-align: left !important;
+    align-items: center !important;
+    min-height: auto !important;
+    position: relative;
+}
+
+.file-list .file-item:hover {
+    background-color: #f8f9fa !important;
+    transform: none !important;
+    box-shadow: none !important;
+}
+
+.file-list .file-item.selected {
+    background-color: #e3f2fd !important;
+}
+
+/* Contenu de la ligne */
+.file-list-content {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding-left: 30px; /* Espace pour la checkbox */
+}
+
+.file-list-icon {
+    width: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    position: relative;
+}
+
+.file-list-icon i.fa-folder {
+    color: #fbbf24;
+}
+
+.file-list-icon i.fa-file-pdf {
+    color: #ef4444;
+}
+
+.file-list-icon i.fa-file-image {
+    color: #8b5cf6;
+}
+
+.file-list-icon i.fa-file-word {
+    color: #3b82f6;
+}
+
+.file-list-icon i.fa-file-excel {
+    color: #10b981;
+}
+
+.file-list-icon i.fa-file-video {
+    color: #f97316;
+}
+
+.file-list-name {
+    flex: 1;
+    min-width: 0;
+    font-size: 14px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding-right: 10px;
+}
+
+.file-list-size {
+    width: 100px;
+    text-align: right;
+    font-size: 13px;
+    color: #666;
+}
+
+.file-list-date {
+    width: 120px;
+    text-align: right;
+    font-size: 13px;
+    color: #666;
+}
+
+.file-list-actions {
+    width: 100px;
+    display: flex;
+    gap: 5px;
+    justify-content: flex-end;
+    align-items: center;
+}
+
+/* Alignement des en-têtes avec le contenu */
+.list-header-content > .sort-header:nth-child(1) {
+    flex: 1;
+    min-width: 0;
+}
+
+.list-header-content > .sort-header:nth-child(2) {
+    width: 100px;
+    justify-content: flex-end;
+}
+
+.list-header-content > .sort-header:nth-child(3) {
+    width: 120px;
+    justify-content: flex-end;
+}
+
+.list-header-actions {
+    width: 100px;
+    text-align: right;
+}
+
+/* Boutons en vue liste */
+.btn-icon {
+    background: transparent;
+    border: none;
+    padding: 6px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    color: #666;
+    transition: all 0.2s;
+}
+
+.btn-icon:hover {
+    background: rgba(0, 0, 0, 0.1);
+    color: #000;
+}
+
+.file-list .btn-copy {
+    background: transparent;
+    border: none;
+    padding: 6px 8px;
+}
+
+.file-list .btn-download {
+    background: transparent;
+    border: none;
+    padding: 6px 8px;
+    color: var(--primary-color);
+}
+
+/* Checkbox en vue liste */
+.file-list .selection-checkbox {
+    left: 0;
+    opacity: 0;
+}
+
+.file-list .file-item:hover .selection-checkbox,
+.file-list .file-item.selected .selection-checkbox {
+    opacity: 1;
+}
+
+/* Actions masquées par défaut en vue grille */
+.file-actions {
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.file-item:hover .file-actions {
+    opacity: 1;
+}
+
+/* En vue liste, les actions sont toujours visibles mais subtiles */
+.file-list .file-actions,
+.file-list .file-list-actions {
+    opacity: 0.6;
+}
+
+.file-list .file-item:hover .file-actions,
+.file-list .file-item:hover .file-list-actions {
+    opacity: 1;
+}
+
+/* Icône fichier masquée en vue liste */
+.file-list .file-icon {
+    display: none !important;
+}
+
+/* Nom et meta masqués en vue liste */
+.file-list .file-name:not(.file-list-name),
+.file-list .file-meta {
+    display: none !important;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .file-list-size,
+    .file-list-date,
+    .list-header-content > .sort-header:nth-child(2),
+    .list-header-content > .sort-header:nth-child(3) {
+        display: none;
+    }
+    
+    .file-list-actions,
+    .list-header-actions {
+        width: 60px;
+    }
+    
+    .file-list-content {
+        padding-left: 10px;
+    }
+}
+
+.file-item {
+    display: flex;
+    justify-content: space-between;
+    align-content: center;
+    align-items: center;
+}
+
